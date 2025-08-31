@@ -1,0 +1,79 @@
+# views/cittadinanza_db.py
+import os
+import json
+import datetime
+
+DB_PATH = "data/cittadinanza.json"
+
+def _ensure_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    if not os.path.exists(DB_PATH):
+        with open(DB_PATH, "w", encoding="utf-8") as f:
+            json.dump({"approved": [], "pending": []}, f, ensure_ascii=False, indent=2)
+
+def _load_db():
+    _ensure_db()
+    with open(DB_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data.setdefault("approved", [])
+    data.setdefault("pending", [])
+    return data
+
+def _save_db(data):
+    with open(DB_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def is_already_approved(user_id: int) -> bool:
+    db = _load_db()
+    return any(p.get("user_id") == user_id for p in db["approved"])
+
+def is_pending(user_id: int) -> bool:
+    db = _load_db()
+    return any(p.get("user_id") == user_id for p in db["pending"])
+
+def mark_pending(user_id: int, dati: dict | None = None):
+    db = _load_db()
+    if not is_pending(user_id) and not is_already_approved(user_id):
+        db["pending"].append({
+            "user_id": user_id,
+            "dati": (dati or {}),
+            "when": datetime.datetime.utcnow().isoformat() + "Z"
+        })
+        _save_db(db)
+
+def unmark_pending(user_id: int):
+    db = _load_db()
+    before = len(db["pending"])
+    db["pending"] = [p for p in db["pending"] if p.get("user_id") != user_id]
+    if len(db["pending"]) != before:
+        _save_db(db)
+
+def get_pending_data(user_id: int) -> dict:
+    db = _load_db()
+    entry = next((p for p in db["pending"] if p.get("user_id") == user_id), None)
+    return entry.get("dati", {}) if entry else {}
+
+def mark_approved(user_id: int):
+    db = _load_db()
+    pending_entry = next((p for p in db["pending"] if p.get("user_id") == user_id), None)
+    dati = pending_entry.get("dati", {}) if pending_entry else {}
+    if not is_already_approved(user_id):
+        db["approved"].append({
+            "user_id": user_id,
+            "dati": dati,
+            "when": datetime.datetime.utcnow().isoformat() + "Z"
+        })
+    db["pending"] = [p for p in db["pending"] if p.get("user_id") != user_id]
+    _save_db(db)
+
+def revoke_approved(user_id: int) -> bool:
+    """Rimuove l’utente dagli approved (e da pending se presente). Ritorna True se ha cambiato qualcosa."""
+    db = _load_db()
+    before_a = len(db["approved"])
+    before_p = len(db["pending"])
+    db["approved"] = [a for a in db["approved"] if a.get("user_id") != user_id]
+    db["pending"]  = [p for p in db["pending"]  if p.get("user_id") != user_id]
+    changed = (len(db["approved"]) != before_a) or (len(db["pending"]) != before_p)
+    if changed:
+        _save_db(db)
+    return changed

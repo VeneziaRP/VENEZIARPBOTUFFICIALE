@@ -1,0 +1,38 @@
+# cogs/colloqui.py
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+from views.colloqui_view import ColloquiView
+
+COLLOQUI_BOARD_CHANNEL_ID = 1408596882258919475
+
+class Colloqui(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="colloqui", description="Invia il pannello di prenotazione colloqui.")
+    async def slash_colloqui(self, interaction: discord.Interaction):
+        # Controllo permessi manuale
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message("⛔ Non hai i permessi per usare questo comando.", ephemeral=True)
+
+        channel = interaction.guild.get_channel(COLLOQUI_BOARD_CHANNEL_ID) or interaction.channel
+
+        embed = discord.Embed(
+            title="📅 Prenotazione Colloqui",
+            description=(
+                "Prenota il tuo **colloquio orale** o la **sessione pratica**.\n\n"
+                "▶️ Clicca uno dei bottoni qui sotto e inserisci **giorno e orario preferiti**.\n"
+                "🕒 Lo staff confermerà l’appuntamento il prima possibile.\n\n"
+                "ℹ️ Se non trovi slot, scrivi nel canale di supporto."
+            ),
+            color=discord.Color.blurple()
+        )
+        embed.set_footer(text="VeneziaRP • Colloqui Staff")
+
+        await channel.send(embed=embed, view=ColloquiView())
+        await interaction.response.send_message("Pannello colloqui inviato ✅", ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Colloqui(bot))

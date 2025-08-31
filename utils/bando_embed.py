@@ -1,0 +1,64 @@
+# utils/bando_embed.py
+from __future__ import annotations
+from typing import List, Tuple, Optional
+import discord
+
+def _progress_bar(corrette: int, tot: int, width: int = 10) -> str:
+    ok = max(0, min(tot, corrette))
+    filled = round(width * (ok / max(1, tot)))
+    return "▰" * filled + "▱" * (width - filled)
+
+def _fmt_details(risposte: List[int], domande: List[Tuple[str, List[str], int]]) -> str:
+    """Ritorna l’elenco 1..N con ✓/✗ e lettera scelta."""
+    lines: List[str] = []
+    for i, (prompt, opts, correct) in enumerate(domande, start=1):
+        scelto = risposte[i-1] if i-1 < len(risposte) else None
+        ok = (scelto == correct)
+        mark = "✅" if ok else "❌"
+        lettera = chr(65 + scelto) if scelto is not None else "—"
+        # stringa corta per non superare i limiti embed
+        lines.append(f"{i}. {mark} ({lettera}) {prompt}")
+    txt = "\n".join(lines)
+    # Discord limita field a 1024 char: tagliamo se necessario
+    return (txt[:1021] + "...") if len(txt) > 1024 else txt
+
+def build_candidatura_embed(
+    *,
+    user: discord.abc.User,
+    nome: str,
+    eta: str,
+    disp: str,
+    esperienze: str,
+    motiv: str,
+    risposte: List[int],
+    corrette: int,
+    domande: List[Tuple[str, List[str], int]],
+    extra: Optional[str] = None,
+) -> discord.Embed:
+    tot = len(domande)
+    percent = int(round((corrette / max(1, tot)) * 100))
+    bar = _progress_bar(corrette, tot, width=10)
+
+    e = discord.Embed(
+        title="📂 Nuova Candidatura Staff",
+        color=discord.Color.gold()
+    )
+    e.add_field(name="Punteggio", value=f"**{corrette}/{tot}** ({percent}%)\n{bar}", inline=False)
+    e.add_field(name="Candidato", value=f"{user.mention}", inline=True)
+    e.add_field(name="Nome", value=nome or "—", inline=True)
+    e.add_field(name="Età", value=eta or "—", inline=True)
+
+    e.add_field(name="🕒 Disponibilità", value=disp or "—", inline=False)
+    if esperienze:
+        e.add_field(name="🧰 Esperienze", value=(esperienze[:1024]), inline=False)
+    if motiv:
+        e.add_field(name="🎯 Motivazione", value=(motiv[:1024]), inline=False)
+    if extra:
+        e.add_field(name="📝 Domanda EXTRA", value=(extra[:1024]), inline=False)
+
+    e.add_field(name="📋 Dettaglio risposte", value=_fmt_details(risposte, domande) or "—", inline=False)
+
+    if getattr(user, "display_avatar", None):
+        e.set_thumbnail(url=user.display_avatar.url)
+    e.set_footer(text="VeneziaRP | Candidature Staff")
+    return e

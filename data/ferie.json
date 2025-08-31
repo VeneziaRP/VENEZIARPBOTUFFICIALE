@@ -1,0 +1,23 @@
+{
+  "1237860059199832097": {
+    "username": "[ꜰᴏɴᴅᴀᴛᴏʀᴇ] Nicola",
+    "ruolo": "—",
+    "data_inizio": "2025-08-21",
+    "data_fine": "2025-09-01",
+    "motivazione": "Prova",
+    "approvato_da": "[ꜰᴏɴᴅᴀᴛᴏʀᴇ] Nicola",
+    "saved_at": "2025-08-21T12:04:49.299250Z"
+  },
+  "ferie": [
+    {
+      "user_id": 1237860059199832097,
+      "username": "[ꜰᴏɴᴅᴀᴛᴏʀᴇ] Nicola",
+      "ruolo": "<@&1396088096931582014>",
+      "data_inizio": "2025-08-21",
+      "data_fine": "2025-08-21",
+      "motivazione": "Prova",
+      "approvato_da": "[ꜰᴏɴᴅᴀᴛᴏʀᴇ] Nicola",
+      "created_at": "2025-08-21T13:26:31.107375Z"
+    }
+  ]
+}

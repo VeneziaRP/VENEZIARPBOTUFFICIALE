@@ -1,0 +1,157 @@
+import re
+import time
+import discord
+from typing import Optional
+
+from views.cittadinanza_review_view import (
+    mark_pending, is_pending, is_already_approved, CittadinanzaReviewView
+)
+
+STAFF_REVIEW_CHANNEL_ID = 1408591071239344238
+DATE_RX = re.compile(r"^(0[1-9]|[12][0-9]|3[01])[-/](0[1-9]|1[0-2])[-/](19|20)\d\d$")  # gg-mm-aaaa
+
+# Cache temporanea: user_id -> {"data": dict, "ts": epoch}
+_STEP_CACHE: dict[int, dict] = {}
+_STEP_CACHE_TTL = 15 * 60  # 15 minuti
+
+def _cache_set(uid: int, data: dict):
+    _STEP_CACHE[uid] = {"data": data, "ts": time.time()}
+
+def _cache_get(uid: int) -> Optional[dict]:
+    item = _STEP_CACHE.get(uid)
+    if not item:
+        return None
+    if time.time() - item["ts"] > _STEP_CACHE_TTL:
+        _STEP_CACHE.pop(uid, None)
+        return None
+    return item["data"]
+
+def _cache_pop(uid: int) -> Optional[dict]:
+    data = _cache_get(uid)
+    _STEP_CACHE.pop(uid, None)
+    return data
+
+
+# ========== STEP 2 (resta uguale; lo apriremo dal bottone) ==========
+class CittadinanzaModalStep2(discord.ui.Modal, title="Cittadinanza — Step 2/2"):
+    def __init__(self, bot: discord.Client, autore: discord.Member, dati_step1: dict):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.autore = autore
+        self.dati_step1 = dati_step1
+
+        self.naz       = discord.ui.TextInput(label="Nazionalità", placeholder="Es. Italiana",
+                                              max_length=30, required=True, style=discord.TextStyle.short)
+        self.lavoro    = discord.ui.TextInput(label="Lavoro RP", placeholder="Es. Meccanico",
+                                              max_length=40, required=False, style=discord.TextStyle.short)
+        self.interessi = discord.ui.TextInput(label="Interessi", placeholder="Es. sport, cucina",
+                                              max_length=150, required=False, style=discord.TextStyle.short)
+        self.competenze = discord.ui.TextInput(label="Competenze", placeholder="Es. guida, primo soccorso",
+                                               max_length=150, required=False, style=discord.TextStyle.short)
+        self.bio       = discord.ui.TextInput(label="Bio", style=discord.TextStyle.paragraph,
+                                              max_length=300, required=False)
+
+        for it in (self.naz, self.lavoro, self.interessi, self.competenze, self.bio):
+            self.add_item(it)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        uid = self.autore.id
+        if is_already_approved(uid):
+            return await interaction.response.send_message("✅ Hai già la cittadinanza.", ephemeral=True)
+        if is_pending(uid):
+            return await interaction.response.send_message("⏳ Hai già una richiesta in valutazione.", ephemeral=True)
+
+        dati = {
+            **self.dati_step1,
+            "nazionalita": (self.naz.value or "").strip(),
+            "lavoro_rp": (self.lavoro.value or "").strip(),
+            "interessi": (self.interessi.value or "").strip(),
+            "competenze": (self.competenze.value or "").strip(),
+            "bio": (self.bio.value or "").strip(),
+            "citta_rp": "",
+            "reputazione": 50,
+            "privacy_contatti": True,
+        }
+
+        mark_pending(uid, dati)
+
+        ch = interaction.client.get_channel(STAFF_REVIEW_CHANNEL_ID)
+        if isinstance(ch, discord.TextChannel):
+            e = discord.Embed(title="🏛️ Nuova Richiesta Cittadinanza", color=discord.Color.gold())
+            e.add_field(name="Utente", value=f"{self.autore.mention} (`{uid}`)", inline=False)
+            e.add_field(name="🎮 Roblox", value=dati["roblox"], inline=True)
+            e.add_field(name="🪪 Nome/Cognome", value=f"{dati['nome_rp']} {dati['cognome_rp']}", inline=True)
+            e.add_field(name="🎂 Nascita", value=dati["data_nascita"], inline=True)
+            e.add_field(name="⚧ Genere", value=dati["genere"], inline=True)
+            e.add_field(name="🌍 Nazionalità", value=dati["nazionalita"], inline=True)
+            e.add_field(name="🧑‍💼 Lavoro", value=dati["lavoro_rp"] or "—", inline=True)
+            if self.autore.display_avatar:
+                e.set_thumbnail(url=self.autore.display_avatar.url)
+            e.set_footer(text="VeneziaRP • Ufficio Cittadinanza")
+            await ch.send(embed=e, view=CittadinanzaReviewView(interaction.client, applicant_id=uid))
+
+        await interaction.response.send_message(
+            "✅ **Richiesta inviata!** Lo staff ti risponderà qui su Discord.", ephemeral=True
+        )
+
+
+# ========== VIEW per aprire lo STEP 2 ==========
+class _ApriStep2View(discord.ui.View):
+    def __init__(self, bot: discord.Client, autore: discord.Member):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.autore = autore
+
+    @discord.ui.button(label="Continua • Step 2", style=discord.ButtonStyle.primary, emoji="➡️", custom_id="citt_step2")
+    async def open_step2(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.autore.id:
+            return await interaction.response.send_message("❌ Questo pulsante è solo per l’autore.", ephemeral=True)
+
+        # recupera i dati dello step 1
+        payload_step1 = _cache_get(self.autore.id)
+        if not payload_step1:
+            return await interaction.response.send_message("⏳ Sessione scaduta. Rifai lo Step 1.", ephemeral=True)
+
+        await interaction.response.send_modal(CittadinanzaModalStep2(self.bot, self.autore, payload_step1))
+
+
+# ========== STEP 1 (modificato: non apre più la modale direttamente) ==========
+class CittadinanzaModalStep1(discord.ui.Modal, title="Cittadinanza — Step 1/2"):
+    def __init__(self, bot: discord.Client, autore: discord.Member):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.autore = autore
+
+        self.roblox  = discord.ui.TextInput(label="Username Roblox", placeholder="Es. Nik20hbmg",
+                                            max_length=32, required=True, style=discord.TextStyle.short)
+        self.nome    = discord.ui.TextInput(label="Nome RP", placeholder="Es. Gionata",
+                                            max_length=30, required=True, style=discord.TextStyle.short)
+        self.cognome = discord.ui.TextInput(label="Cognome RP", placeholder="Es. Boschetti",
+                                            max_length=30, required=True, style=discord.TextStyle.short)
+        self.nascita = discord.ui.TextInput(label="Data nascita", placeholder="gg-mm-aaaa",
+                                            max_length=10, required=True, style=discord.TextStyle.short)
+        self.genere  = discord.ui.TextInput(label="Genere", placeholder="Uomo / Donna / Altro",
+                                            max_length=20, required=True, style=discord.TextStyle.short)
+        for it in (self.roblox, self.nome, self.cognome, self.nascita, self.genere):
+            self.add_item(it)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        dob = self.nascita.value.strip().replace("/", "-")
+        if not DATE_RX.match(dob):
+            return await interaction.response.send_message("⚠️ Data non valida. Usa **gg-mm-aaaa**.", ephemeral=True)
+
+        payload_step1 = {
+            "roblox": self.roblox.value.strip(),
+            "nome_rp": self.nome.value.strip(),
+            "cognome_rp": self.cognome.value.strip(),
+            "data_nascita": dob,
+            "genere": self.genere.value.strip(),
+        }
+
+        # salva in cache e mostra bottone per aprire lo Step 2
+        _cache_set(self.autore.id, payload_step1)
+        view = _ApriStep2View(self.bot, self.autore)
+        await interaction.response.send_message(
+            "✅ **Step 1 completato!**\nPremi **Continua • Step 2** per finire la richiesta.",
+            view=view, ephemeral=True
+        )

@@ -1,0 +1,12 @@
+run = "python3 main.py"
+modules = ["python-3.11"]
+
+[deployment]
+run = ["sh", "-c", "python -u main.py"]
+deploymentTarget = "gce"
+ignorePorts = true
+
+[agent]
+expertMode = true
+
+[nix]

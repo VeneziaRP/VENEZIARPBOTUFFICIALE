@@ -1,0 +1,71 @@
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+# Link al documento regolamento
+DOC_LINK = "https://docs.google.com/document/d/12EW3dm0RoLvUZ636LBGL9iAXFXbvJrOz/edit?usp=drivesdk&ouid=114081539276180227116&rtpof=true&sd=true"
+
+class Regolamento(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="regolamento", description="Mostra il regolamento ufficiale con link e ping @everyone.")
+    async def regolamento(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        logo_url = guild.icon.url if guild and guild.icon else None  # usa logo server se esiste
+
+        # Testo embed
+        title = "📘 Comunicazione Importante — Regolamento Generale"
+        intro = (
+            "A tutti i cittadini di **VeneziaRP**:\n"
+            "vi invitiamo a leggere attentamente il **Regolamento ufficiale**, valido in ogni area del gioco "
+            "(sia in RP che fuori RP)."
+        )
+        obiettivi = (
+            "• Garantire un'esperienza di gioco **realistica** e **rispettosa** per tutti.\n"
+            "• Evitare comportamenti scorretti, troll o azioni **non coerenti** con l'RP.\n"
+            "• Assicurare che ogni giocatore conosca **limiti** e **confini** del roleplay."
+        )
+        obblighi = (
+            "✅ **Ogni cittadino è tenuto a conoscere e rispettare il regolamento.**\n"
+            "❌ **Ignorarlo non esonera dalla responsabilità**: in base alla gravità, lo Staff può applicare "
+            "**warn / mute / kick / ban**."
+        )
+        aiuto = (
+            "Hai dubbi o domande? Apri **ticket** e chiedi allo Staff **prima** di agire in gioco.\n"
+            "Usa il bottone qui sotto per aprire il documento."
+        )
+
+        # Embed
+        emb = discord.Embed(
+            title=title,
+            description=intro,
+            color=discord.Color.gold()
+        )
+        emb.add_field(name="🎯 Obiettivi del Regolamento", value=obiettivi, inline=False)
+        emb.add_field(name="📌 Obblighi & Sanzioni", value=obblighi, inline=False)
+        emb.add_field(name="ℹ️ Come ottenere aiuto", value=aiuto, inline=False)
+
+        if logo_url:
+            emb.set_thumbnail(url=logo_url)
+            emb.set_footer(text="VeneziaRP | Regolamento Ufficiale", icon_url=logo_url)
+        else:
+            emb.set_footer(text="VeneziaRP | Regolamento Ufficiale")
+
+        emb.timestamp = discord.utils.utcnow()
+
+        # Bottone link
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(
+            label="Apri il Regolamento",
+            url=DOC_LINK,
+            emoji="🔗",
+            style=discord.ButtonStyle.link
+        ))
+
+        # Manda con ping @everyone
+        await interaction.channel.send(content="@everyone", embed=emb, view=view)
+        await interaction.response.send_message("✅ Regolamento inviato con ping @everyone.", ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Regolamento(bot))

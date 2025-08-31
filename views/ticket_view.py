@@ -1,0 +1,334 @@
+# views/ticket_view.py
+from __future__ import annotations
+import discord
+from discord.utils import get
+
+# === CONFIG ===
+ID_CATEGORIA_TICKET = 1408582533083431063   # Categoria dove creare i ticket
+ID_RUOLO_STAFF      = 1408613551228059680   # Ruolo staff che può gestire/chiudere i ticket
+
+# 👇 Categorie disponibili: "Etichetta" -> "slug-canale"
+CATEGORIE = {
+    "🆘 Ticket Assistenza": "ticket-assistenza",
+    "🏛️ Richiesta Amministrazione": "richiesta-amministrazione",
+    "🔓 Richiesta UnBan Roblox": "richiesta-unban",
+    "🛠️ Richiesta Gestionale": "richiesta-gestionale",
+    "✅ Ticket Perma": "ticket-perma",
+    "🧠 Segnala Problema BOT": "problema-bot",
+    "📩 Contatta lo Staff": "contatta-staff",
+    "📝 Segnala Utente": "segnala-utente",
+    "📣 Proposta Miglioramento": "proposta-miglioramento",
+    "🎭 Richiesta Personaggio": "richiesta-personaggio",
+    "💼 Richiesta Lavoro RP": "lavoro-rp",
+    "🚔 Appello Sanzione": "appello-sanzione",
+    "🤝 Richiesta Partnership": "richiesta-partnership",
+    "🎫 Altro": "ticket-generico",
+}
+
+# ============== UTILS ==============
+def _is_staff(member: discord.Member) -> bool:
+    return any(r.id == ID_RUOLO_STAFF for r in member.roles) or member.guild_permissions.manage_guild
+
+def _parse_topic(topic: str | None):
+    """
+    Topic formattato come:
+      ticket:<user_id>:<categoria_label>|assigned:<staff_id or ->
+    Ritorna (opener_id, categoria_label, assigned_id) dove assigned_id può essere None.
+    """
+    if not topic or not topic.startswith("ticket:"):
+        return None, None, None
+    try:
+        left, _, right = topic.partition("|")
+        _, uid, categoria = left.split(":", 2)
+        opener_id = int(uid)
+        assigned_id = None
+        if right.startswith("assigned:"):
+            val = right.split(":", 1)[1]
+            if val != "-":
+                assigned_id = int(val)
+        return opener_id, categoria, assigned_id
+    except Exception:
+        return None, None, None
+
+async def _set_assigned(ch: discord.TextChannel, staff_id: int | None):
+    opener_id, categoria, _ = _parse_topic(ch.topic)
+    if opener_id is None:
+        categoria = categoria or "N/D"
+        ch_topic = f"ticket:{opener_id or 0}:{categoria}|assigned:{staff_id if staff_id else '-'}"
+    else:
+        ch_topic = f"ticket:{opener_id}:{categoria}|assigned:{staff_id if staff_id else '-'}"
+    try:
+        await ch.edit(topic=ch_topic, reason="Aggiorna assegnatario ticket")
+    except discord.Forbidden:
+        pass
+
+def _assignee_label(assigned_id: int | None) -> str:
+    return f"In carico a <@{assigned_id}>" if assigned_id else "Prendi in carico"
+
+# ============== VIEW PRINCIPALE (menu categorie) ==============
+class TicketView(discord.ui.View):
+    """Pannello nuovo (persistent) con select moderna."""
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
+
+class TicketSelect(discord.ui.Select):
+    def __init__(self):
+        options = [discord.SelectOption(label=label, value=label) for label in CATEGORIE.keys()]
+        super().__init__(
+            placeholder="Seleziona una categoria…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="ticket:select",  # nuovo custom_id
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        categoria_nome = self.values[0]
+        await crea_ticket(interaction, categoria_nome)
+
+# ============== CREAZIONE TICKET ==============
+async def crea_ticket(interaction: discord.Interaction, categoria_nome: str):
+    guild = interaction.guild
+    autore = interaction.user
+    slug = CATEGORIE[categoria_nome]
+
+    categoria = get(guild.categories, id=ID_CATEGORIA_TICKET)
+    if not categoria:
+        return await interaction.response.send_message("❌ Categoria ticket non trovata.", ephemeral=True)
+
+    # --- FIX: prendo il ruolo staff e lo aggiungo solo se esiste ---
+    staff_role = guild.get_role(ID_RUOLO_STAFF)
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        autore: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+    }
+
+    if staff_role:
+        overwrites[staff_role] = discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, read_message_history=True
+        )
+    else:
+        # Log non bloccante: il ticket si crea comunque
+        print(f"⚠️ ATTENZIONE: Ruolo staff {ID_RUOLO_STAFF} non trovato in {guild.name}")
+
+    # Salviamo autore + categoria + (assigned:-) nel topic
+    topic = f"ticket:{autore.id}:{categoria_nome}|assigned:-"
+
+    canale = await guild.create_text_channel(
+        name=f"{slug}-{autore.name}".lower(),
+        overwrites=overwrites,
+        category=categoria,
+        topic=topic
+    )
+
+    embed = discord.Embed(
+        title="📩 Ticket Aperto",
+        description=(
+            f"**Utente:** {autore.mention}\n"
+            f"**Categoria:** {categoria_nome}\n"
+            f"**Apertura:** <t:{int(interaction.created_at.timestamp())}:f>\n\n"
+            "Un membro dello **Staff** risponderà al più presto. "
+            "Nel frattempo spiega meglio il problema, allega prove o screenshot utili. 🙏"
+        ),
+        color=discord.Color.green()
+    )
+    embed.set_footer(text="VeneziaRP | Supporto Ticket")
+
+    # Nessun assegnatario iniziale
+    view = TicketActionView(assigned_id=None)
+
+    await canale.send(
+        content=f"{autore.mention} | <@&{ID_RUOLO_STAFF}>",
+        embed=embed,
+        view=view
+    )
+
+    await interaction.response.send_message(f"✅ Ticket creato: {canale.mention}", ephemeral=True)
+
+# ============== BOTTONI: PRENDI IN CARICO / CHIUDI / CHIUDI CON MOTIVO ==============
+class TicketActionView(discord.ui.View):
+    """View dinamica dentro al ticket (non persistent)."""
+    def __init__(self, assigned_id: int | None):
+        super().__init__(timeout=None)
+        self.assigned_id = assigned_id
+
+        # Bottone: Prendi in carico
+        self.btn_take = discord.ui.Button(
+            label=_assignee_label(assigned_id),
+            style=discord.ButtonStyle.green if assigned_id is None else discord.ButtonStyle.gray,
+            emoji="📌",
+            custom_id="ticket_take",
+            disabled=(assigned_id is not None)
+        )
+        self.btn_take.callback = self._cb_take
+        self.add_item(self.btn_take)
+
+        # Bottone: Chiudi semplice
+        self.btn_close = discord.ui.Button(
+            label="🔒 Chiudi",
+            style=discord.ButtonStyle.red,
+            custom_id="ticket_close_now"
+        )
+        self.btn_close.callback = self._cb_close_now
+        self.add_item(self.btn_close)
+
+        # Bottone: Chiudi con motivazione
+        self.btn_close_reason = discord.ui.Button(
+            label="📝 Chiudi con motivazione",
+            style=discord.ButtonStyle.blurple,
+            custom_id="ticket_close_reason"
+        )
+        self.btn_close_reason.callback = self._cb_close_reason
+        self.add_item(self.btn_close_reason)
+
+    async def _cb_take(self, interaction: discord.Interaction):
+        if not _is_staff(interaction.user):
+            return await interaction.response.send_message("❌ Solo lo staff può usare questo bottone.", ephemeral=True)
+        ch = interaction.channel
+        if not isinstance(ch, discord.TextChannel):
+            return await interaction.response.send_message("❌ Azione non valida qui.", ephemeral=True)
+
+        # Se già assegnato, blocca
+        _, _, assigned_id = _parse_topic(ch.topic)
+        if assigned_id is not None:
+            return await interaction.response.send_message("ℹ️ Il ticket è già in carico.", ephemeral=True)
+
+        # Segna l'assegnatario nel topic
+        await _set_assigned(ch, interaction.user.id)
+
+        # Aggiorna la view
+        try:
+            new_view = TicketActionView(assigned_id=interaction.user.id)
+            await interaction.response.edit_message(view=new_view)
+        except discord.InteractionResponded:
+            await interaction.message.edit(view=TicketActionView(assigned_id=interaction.user.id))
+
+        # Messaggio pubblico nel canale
+        await ch.send(f"📌 Ticket preso in carico da {interaction.user.mention}.")
+
+    async def _cb_close_now(self, interaction: discord.Interaction):
+        if not _is_staff(interaction.user):
+            return await interaction.response.send_message("❌ Solo lo staff può chiudere i ticket.", ephemeral=True)
+        ch = interaction.channel
+        if not isinstance(ch, discord.TextChannel):
+            return await interaction.response.send_message("❌ Azione non valida qui.", ephemeral=True)
+
+        opener_id, _, _ = _parse_topic(ch.topic)
+        opener_mention = f"<@{opener_id}>" if opener_id else "Utente"
+
+        embed = discord.Embed(
+            title="🔒 Ticket Chiuso",
+            description=(
+                f"{opener_mention}, il ticket è stato **chiuso** dallo staff {interaction.user.mention}.\n"
+                "Grazie per aver contattato il supporto di **VeneziaRP**."
+            ),
+            color=discord.Color.red()
+        )
+
+        try:
+            await interaction.response.send_message(embed=embed)
+        except discord.InteractionResponded:
+            await interaction.followup.send(embed=embed)
+
+        # Attendi 2s e chiudi canale
+        try:
+            await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(seconds=2))
+        except Exception:
+            pass
+        try:
+            await ch.delete(reason="Ticket chiuso (senza motivazione)")
+        except discord.Forbidden:
+            pass
+
+    async def _cb_close_reason(self, interaction: discord.Interaction):
+        user = interaction.user
+        if _is_staff(user) is False:
+            return await interaction.response.send_message("❌ Solo lo staff può chiudere i ticket.", ephemeral=True)
+        await interaction.response.send_modal(TicketCloseReasonModal())
+
+# ============== MODALE: MOTIVAZIONE CHIUSURA ==============
+class TicketCloseReasonModal(discord.ui.Modal, title="📝 Motivazione chiusura"):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.motivazione = discord.ui.TextInput(
+            label="Motivo",
+            placeholder="Scrivi il motivo della chiusura…",
+            style=discord.TextStyle.paragraph,
+            max_length=1000,
+            required=True
+        )
+        self.add_item(self.motivazione)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if _is_staff(interaction.user) is False:
+            return await interaction.response.send_message("❌ Solo lo staff può chiudere i ticket.", ephemeral=True)
+
+        ch = interaction.channel
+        if not isinstance(ch, discord.TextChannel):
+            return await interaction.response.send_message("❌ Azione non valida qui.", ephemeral=True)
+
+        opener_id, _, _ = _parse_topic(ch.topic)
+        opener_mention = f"<@{opener_id}>" if opener_id else "Utente"
+
+        embed = discord.Embed(
+            title="🔒 Ticket Chiuso",
+            description=(
+                f"{opener_mention}, il ticket è stato **chiuso** dallo staff {interaction.user.mention}.\n\n"
+                f"**Motivazione:**\n> {self.motivazione.value.strip()}"
+            ),
+            color=discord.Color.red()
+        )
+        embed.set_footer(text="VeneziaRP | Supporto Ticket")
+
+        try:
+            await interaction.response.send_message(embed=embed)
+        except discord.InteractionResponded:
+            await interaction.followup.send(embed=embed)
+
+        # Delay e chiusura
+        try:
+            await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(seconds=2))
+        except Exception:
+            pass
+        try:
+            await ch.delete(reason=f"Ticket chiuso: {self.motivazione.value[:100]}")
+        except discord.Forbidden:
+            pass
+
+# --- Legacy PERSISTENT: compat per vecchi custom_id pubblicati in passato ---
+class TicketPanelPersistentLegacy(discord.ui.View):
+    """Gestisce la select con vecchio custom_id 'ticket_select'."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Seleziona una categoria…",
+        min_values=1, max_values=1,
+        options=[discord.SelectOption(label=l, value=l) for l in CATEGORIE.keys()],
+        custom_id="ticket_select"  # <-- vecchio id
+    )
+    async def _legacy_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        categoria_nome = select.values[0]
+        await crea_ticket(interaction, categoria_nome)
+
+class TicketActionPersistentLegacy(discord.ui.View):
+    """Gestisce i bottoni con vecchi custom_id ('ticket_take', 'ticket_close_now', 'ticket_close_reason')."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Prendi in carico", style=discord.ButtonStyle.green, emoji="📌", custom_id="ticket_take")
+    async def _take_legacy(self, interaction: discord.Interaction, _: discord.ui.Button):
+        v = TicketActionView(assigned_id=None)
+        await v._cb_take(interaction)
+
+    @discord.ui.button(label="🔒 Chiudi", style=discord.ButtonStyle.red, custom_id="ticket_close_now")
+    async def _close_now_legacy(self, interaction: discord.Interaction, _: discord.ui.Button):
+        v = TicketActionView(assigned_id=None)
+        await v._cb_close_now(interaction)
+
+    @discord.ui.button(label="📝 Chiudi con motivazione", style=discord.ButtonStyle.blurple, custom_id="ticket_close_reason")
+    async def _close_reason_legacy(self, interaction: discord.Interaction, _: discord.ui.Button):
+        v = TicketActionView(assigned_id=None)
+        await v._cb_close_reason(interaction) 

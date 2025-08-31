@@ -1,0 +1,173 @@
+{
+  "1237860059199832097": {
+    "nome_rp": "Gionata",
+    "cognome_rp": "Boschetti",
+    "eta_rp": "23",
+    "data_nascita": "21-03-2002",
+    "genere": "Uomo",
+    "nazionalita": "Italiana",
+    "lavoro_rp": "Nessuno",
+    "citta_rp": "",
+    "interessi": "Musica",
+    "competenze": "Nessuna",
+    "orari": "",
+    "licenze": "",
+    "bio": "Solo in fondatore",
+    "social": "Nik20bhmg",
+    "roblox": "Nik20bhmg",
+    "reputazione": 50,
+    "privacy_contatti": true,
+    "badges_custom": [],
+    "note_staff": "",
+    "docs": {
+      "cittadinanza": {
+        "stato": true,
+        "numero": "CIT-2097",
+        "rilasciata_il": "2025-08-19",
+        "rilasciata_da": "Comune di Venezia",
+        "note": ""
+      },
+      "patenti": {
+        "A": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "B": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "C": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "NAUTICA": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        }
+      }
+    },
+    "updated_at": "2025-08-19T17:03:02.521644+00:00"
+  },
+  "1379377190700978247": {
+    "nome_rp": "Dissidi",
+    "cognome_rp": "Zjznz",
+    "eta_rp": "24",
+    "data_nascita": "21-03-2001",
+    "genere": "Uomo",
+    "nazionalita": "Sosnsn",
+    "lavoro_rp": "Sosnsn",
+    "citta_rp": "",
+    "interessi": "Sosnsn",
+    "competenze": "Sosnsn",
+    "orari": "",
+    "licenze": "",
+    "bio": "Kwnsn",
+    "social": "Sisjsn",
+    "roblox": "Sisjsn",
+    "reputazione": 50,
+    "privacy_contatti": true,
+    "badges_custom": [],
+    "note_staff": "",
+    "docs": {
+      "cittadinanza": {
+        "stato": true,
+        "numero": "CIT-8247",
+        "rilasciata_il": "2025-08-19",
+        "rilasciata_da": "Comune di Venezia",
+        "note": ""
+      },
+      "patenti": {
+        "A": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "B": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "C": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "NAUTICA": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        }
+      }
+    },
+    "updated_at": "2025-08-19T17:12:55.089093+00:00"
+  },
+  "1313150590095982684": {
+    "nome_rp": "William",
+    "cognome_rp": "Cracco",
+    "eta_rp": "25",
+    "data_nascita": "04-01-2000",
+    "genere": "Uomo",
+    "nazionalita": "Italiana",
+    "lavoro_rp": "Vigile del fuoco Vice capo",
+    "citta_rp": "",
+    "interessi": "Lavoro",
+    "competenze": "Primo soccorso",
+    "orari": "",
+    "licenze": "",
+    "bio": "Essere serio al lavoro",
+    "social": "Willi_BR3",
+    "roblox": "Willi_BR3",
+    "reputazione": 50,
+    "privacy_contatti": true,
+    "badges_custom": [],
+    "note_staff": "",
+    "docs": {
+      "cittadinanza": {
+        "stato": true,
+        "numero": "CIT-2684",
+        "rilasciata_il": "2025-08-20",
+        "rilasciata_da": "Comune di Venezia",
+        "note": ""
+      },
+      "patenti": {
+        "A": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "B": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "C": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "NAUTICA": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        }
+      }
+    },
+    "updated_at": "2025-08-20T12:12:52.727724+00:00"
+  }
+}

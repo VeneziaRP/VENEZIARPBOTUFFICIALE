@@ -1,0 +1,80 @@
+# views/ssd_view.py
+import discord
+import datetime
+
+PING_RUOLO_CITTADINO_ID = 1408613574850379959  # @Cittadino di Venezia
+
+class SSDView(discord.ui.View):
+    def __init__(self):
+        # timeout=None => persistente (ricordati bot.add_view(SSDView()) all'avvio)
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Scegli un'opzione SSD",
+        min_values=1,
+        max_values=1,
+        options=[
+            discord.SelectOption(
+                label="SSD - Grazie per aver giocato",
+                description="Il server è stato chiuso con successo.",
+                value="grazie",
+                emoji="✅"
+            ),
+            discord.SelectOption(
+                label="SSD - Non abbiamo raggiunto i voti stimati",
+                description="Sessione annullata per mancanza voti.",
+                value="non_raggiunti",
+                emoji="⚠️"
+            ),
+        ],
+        custom_id="ssd_select"
+    )
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        # Orari “canonici” di votazione
+        now = datetime.datetime.now().time()
+        orari = [datetime.time(10), datetime.time(14), datetime.time(16), datetime.time(21)]
+        prossima_votazione = next((o for o in orari if o > now), orari[0])
+        ora_votazione = prossima_votazione.strftime("%H:%M")
+
+        # Scegli embed
+        if select.values[0] == "grazie":
+            embed = discord.Embed(
+                title="🛡️ SSD - SERVER CHIUSO",
+                description=(
+                    "🔔 **La sessione di gioco è terminata!**\n"
+                    "Grazie a tutti i cittadini che hanno partecipato e dato vita a nuove storie nella nostra amata Venezia.\n\n"
+                    "🟥 Il server è ora **chiuso**.\n"
+                    f"🗳️ La prossima votazione sarà alle: **{ora_votazione}**\n\n"
+                    "❤️ A presto, e buon proseguimento da tutto lo Staff di VeneziaRP!"
+                ),
+                color=discord.Color.red()
+            )
+            footer_txt = "VeneziaRP | SSD Server Chiuso"
+        else:
+            embed = discord.Embed(
+                title="🛡️ SSD - SERVER CHIUSO",
+                description=(
+                    "⚠️ **La sessione NON è stata avviata.**\n"
+                    "Non sono stati raggiunti i voti necessari per aprire il server.\n\n"
+                    f"🗳️ La prossima votazione sarà alle: **{ora_votazione}**\n\n"
+                    "❤️ Grazie comunque per l'attesa. Continuate a seguirci!"
+                ),
+                color=discord.Color.dark_red()
+            )
+            footer_txt = "VeneziaRP | SSD Non Avviato"
+
+        if interaction.guild and interaction.guild.icon:
+            embed.set_footer(text=footer_txt, icon_url=interaction.guild.icon.url)
+        else:
+            embed.set_footer(text=footer_txt)
+
+        # Contenuto con menzione ruolo
+        content = f"<@&{PING_RUOLO_CITTADINO_ID}>"
+
+        # ✅ Rispondi correttamente all’interaction modificando il messaggio del pannello
+        await interaction.response.edit_message(
+            content=content,
+            embed=embed,
+            view=None,  # rimuovi la select dopo la scelta
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )

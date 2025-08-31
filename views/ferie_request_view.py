@@ -1,0 +1,103 @@
+# views/ferie_request_view.py
+import re
+import discord
+from datetime import datetime
+
+from views.ferie_view import FerieReviewView, build_richiesta_embed
+
+# 🔧 CONFIG — canale dove arrivano le richieste da revisionare
+FERIE_STAFF_CHANNEL_ID = 1408598547716243496  # <— ID canale staff "richieste-ferie"
+
+# Ruoli che possono approvare (gli stessi che mostri nel pannello)
+APPROVER_ROLE_IDS: set[int] = {
+    1408613537181466817,  # 👑 fondatore
+    1408613538594947303,  # 👑 co-fondatore
+}
+
+# accetta gg-mm-aaaa o gg/mm/aaaa
+DATE_RX = re.compile(r"^(0[1-9]|[12][0-9]|3[01])[-/](0[1-9]|1[0-2])[-/](19|20)\d\d$")
+
+def _norma_data(s: str) -> str:
+    """Converte 'gg-mm-aaaa' o 'gg/mm/aaaa' in 'gg-mm-aaaa' (solo normalizzazione, non parsing)."""
+    return (s or "").strip().replace("/", "-")
+
+def _to_iso_ddmm(s: str) -> datetime | None:
+    """Parsa 'gg-mm-aaaa' in datetime (00:00). Ritorna None se invalida."""
+    try:
+        return datetime.strptime(s, "%d-%m-%Y")
+    except Exception:
+        return None
+
+class FerieRequestModal(discord.ui.Modal, title="Richiesta Ferie — Compila il modulo"):
+    def __init__(self, author: discord.Member):
+        super().__init__(timeout=None)
+        self.author = author
+
+        self.data_inizio = discord.ui.TextInput(
+            label="Data inizio",
+            placeholder="gg-mm-aaaa",
+            max_length=10, required=True
+        )
+        self.data_fine = discord.ui.TextInput(
+            label="Data fine",
+            placeholder="gg-mm-aaaa",
+            max_length=10, required=True
+        )
+        self.motivazione = discord.ui.TextInput(
+            label="Motivazione (breve)",
+            placeholder="es. Vacanza familiare / motivi personali",
+            style=discord.TextStyle.paragraph,
+            max_length=300, required=True
+        )
+        self.disponibilita = discord.ui.TextInput(
+            label="Disponibilità di presenza",
+            placeholder="es. Sì (solo la sera) / No / 21–23",
+            max_length=60, required=False
+        )
+
+        for item in (self.data_inizio, self.data_fine, self.motivazione, self.disponibilita):
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        di = _norma_data(self.data_inizio.value)
+        df = _norma_data(self.data_fine.value)
+
+        if not DATE_RX.match(di):
+            return await interaction.response.send_message("⚠️ **Data inizio** non valida. Usa `gg-mm-aaaa`.", ephemeral=True)
+        if not DATE_RX.match(df):
+            return await interaction.response.send_message("⚠️ **Data fine** non valida. Usa `gg-mm-aaaa`.", ephemeral=True)
+
+        di_dt = _to_iso_ddmm(di)
+        df_dt = _to_iso_ddmm(df)
+        if not di_dt or not df_dt:
+            return await interaction.response.send_message("⚠️ Formato data non valido. Usa `gg-mm-aaaa`.", ephemeral=True)
+        if di_dt > df_dt:
+            return await interaction.response.send_message("⚠️ La **data di inizio** non può essere **successiva** alla data di fine.", ephemeral=True)
+
+        # embed nello stile richiesto
+        ruolo_principale = interaction.user.top_role if interaction.user.top_role else None
+        emb = build_richiesta_embed(
+            autore=interaction.user,
+            ruolo_principale=ruolo_principale,
+            data_inizio=di,
+            data_fine=df,
+            motivazione=self.motivazione.value.strip(),
+            disponibilita=(self.disponibilita.value or "—").strip(),
+        )
+
+        # invio nel canale staff con i bottoni Approva / Rifiuta
+        ch = interaction.client.get_channel(FERIE_STAFF_CHANNEL_ID)
+        if not isinstance(ch, discord.TextChannel):
+            return await interaction.response.send_message("❌ Canale richieste ferie **non configurato**.", ephemeral=True)
+
+        view = FerieReviewView(
+            bot=interaction.client,
+            applicant_id=interaction.user.id,
+            approver_roles=APPROVER_ROLE_IDS
+        )
+
+        # ping discreto dei ruoli approvatori (se vuoi toglilo)
+        ping = " ".join(f"<@&{rid}>" for rid in APPROVER_ROLE_IDS)
+
+        await ch.send(content=ping if ping else None, embed=emb, view=view)
+        await interaction.response.send_message("✅ **Richiesta inviata!** Lo staff la esaminerà al più presto.", ephemeral=True)

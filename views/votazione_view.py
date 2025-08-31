@@ -1,0 +1,188 @@
+import os
+import json
+import asyncio
+from datetime import datetime
+from typing import Set, Optional
+
+import discord
+
+DATA_FILE = "data/votazione_data.json"
+
+# ID per permessi/log (metti i tuoi se cambiano)
+RUOLO_STAFF_ID = 1408613549168918528
+LOG_CHANNEL_ID = 1408588715277680680
+
+
+# ===== Helpers file sicuri =====
+def _safe_load_data() -> dict:
+    """Carica il file json della votazione in modo sicuro."""
+    try:
+        os.makedirs("data", exist_ok=True)
+        if not os.path.exists(DATA_FILE):
+            return {}
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            txt = f.read().strip()
+            if not txt:
+                return {}
+            return json.loads(txt)
+    except Exception:
+        return {}
+
+
+def _safe_save_data(payload: dict) -> None:
+    """Salva il json in modo sicuro creando la cartella se manca."""
+    os.makedirs("data", exist_ok=True)
+    tmp = DATA_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, DATA_FILE)
+
+
+class VotazioneView(discord.ui.View):
+    """
+    View persistente per la votazione.
+    Bottoni:
+      - 🗳️ Vota (vota una sola volta)
+      - 👥 Utenti: N (lista votanti)
+      - 🚀 Avvia SSU (solo staff, si abilita a 5 voti)
+    """
+    def __init__(self, autore: Optional[discord.User] = None, bot: Optional[discord.Client] = None):
+        super().__init__(timeout=None)
+        self.autore = autore
+        self.bot = bot
+        self.votanti: Set[int] = set()
+        self.message: Optional[discord.Message] = None
+
+    # ========== Bottoni ==========
+    @discord.ui.button(label="🗳️ Vota", style=discord.ButtonStyle.blurple, custom_id="vota")
+    async def vota(self, interaction: discord.Interaction, button: discord.ui.Button):
+        uid = interaction.user.id
+        if uid in self.votanti:
+            return await interaction.response.send_message("⚠️ Hai già votato!", ephemeral=True)
+
+        self.votanti.add(uid)
+
+        # aggiorna contatore e stato del bottone SSU
+        for child in self.children:
+            if isinstance(child, discord.ui.Button) and child.custom_id == "utenti":
+                child.label = f"👥 Utenti: {len(self.votanti)}"
+            if isinstance(child, discord.ui.Button) and child.custom_id == "ssu":
+                child.disabled = len(self.votanti) < 5
+
+        await interaction.response.edit_message(view=self)
+        await self.salva_dati()
+
+    @discord.ui.button(label="👥 Utenti: 0", style=discord.ButtonStyle.gray, custom_id="utenti")
+    async def utenti(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.votanti:
+            return await interaction.response.send_message("Nessun utente ha votato.", ephemeral=True)
+
+        lines = []
+        for uid in self.votanti:
+            m = interaction.guild.get_member(uid)
+            lines.append(f"• {m.mention if m else f'`{uid}`'}")
+        await interaction.response.send_message("🗳️ Utenti che hanno votato:\n" + "\n".join(lines), ephemeral=True)
+
+    @discord.ui.button(label="🚀 Avvia SSU", style=discord.ButtonStyle.green, custom_id="ssu", disabled=True)
+    async def avvia_ssu(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Solo staff
+        if not any(r.id == RUOLO_STAFF_ID for r in interaction.user.roles):
+            return await interaction.response.send_message("❌ Solo lo staff può avviare l’SSU.", ephemeral=True)
+
+        now = datetime.now()
+        orari_possibili = [10, 14, 16, 21]
+        prossima = next((h for h in orari_possibili if h > now.hour), orari_possibili[0])
+        orario_attuale = now.strftime("%H:%M")
+        prossima_votazione = f"{prossima:02d}:00"
+
+        lines = []
+        for uid in self.votanti:
+            m = interaction.guild.get_member(uid)
+            lines.append(f"• {m.mention if m else f'`{uid}`'}")
+        votanti_mentions = "\n".join(lines) if lines else "—"
+
+        embed = discord.Embed(
+            title="🔓 SSU - SERVER APERTO",
+            description=(
+                "🚀 Il server è ufficialmente **aperto**!\n\n"
+                "🔔 Se hai votato, **entra subito** in gioco.\n"
+                "⏳ Chi ha votato ma **non entra entro 30 minuti** verrà **segnalato** allo staff.\n\n"
+                "🖥️ Codice server: `VeneziaRP`\n"
+                "🟢 Stato server: ONLINE\n"
+                f"🕒 Apertura: **{orario_attuale}**\n"
+                f"🗳️ Prossima votazione: **{prossima_votazione}**\n\n"
+                f"🔔 **Utenti che hanno votato:**\n{votanti_mentions}\n"
+            ),
+            color=discord.Color.green()
+        )
+        if interaction.guild and interaction.guild.icon:
+            embed.set_footer(text=f"{interaction.guild.name} | SSU Attivo", icon_url=interaction.guild.icon.url)
+        else:
+            embed.set_footer(text="SSU Attivo")
+
+        if self.message:
+            await self.message.edit(content="", embed=embed, view=None)
+        await interaction.response.defer()
+
+        await self.controlla_votanti(interaction)
+
+    # ========== Persistenza ==========
+    async def salva_dati(self):
+        if not self.message:
+            return
+        payload = {
+            "canale_id": self.message.channel.id,
+            "messaggio_id": self.message.id,
+            "autore_id": getattr(self.autore, "id", None),
+            "votanti": list(self.votanti),
+        }
+        _safe_save_data(payload)
+
+    async def ripristina_da_file(self) -> bool:
+        data = _safe_load_data()
+        if not data or not self.message:
+            return False
+        if data.get("messaggio_id") != self.message.id:
+            return False
+
+        self.votanti = set(int(x) for x in data.get("votanti", []))
+
+        for child in self.children:
+            if isinstance(child, discord.ui.Button) and child.custom_id == "utenti":
+                child.label = f"👥 Utenti: {len(self.votanti)}"
+            if isinstance(child, discord.ui.Button) and child.custom_id == "ssu":
+                child.disabled = len(self.votanti) < 5
+        try:
+            await self.message.edit(view=self)
+        except Exception:
+            pass
+        return True
+
+    async def aggancia_messaggio(self, message: discord.Message):
+        """Da chiamare subito dopo il send() del messaggio della votazione."""
+        self.message = message
+        # 🔧 NON salviamo qui, altrimenti al restore sovrascrive con votanti vuoti
+
+    # ========== Controllo post-SSU ==========
+    async def controlla_votanti(self, interaction: discord.Interaction):
+        await asyncio.sleep(1800)
+        guild = interaction.guild
+        if not guild:
+            return
+        log_ch = guild.get_channel(LOG_CHANNEL_ID)
+        if not log_ch:
+            return
+
+        non_entrati = []
+        for uid in self.votanti:
+            member = guild.get_member(uid)
+            if member is None:
+                non_entrati.append(f"<@{uid}> (`{uid}`)")
+
+        if non_entrati:
+            testo = "**Utenti che hanno votato ma non sono entrati entro 30 minuti:**\n"
+            testo += "\n".join(non_entrati)
+            try:
+                await log_ch.send(testo)
+            except discord.Forbidden:
+                pass

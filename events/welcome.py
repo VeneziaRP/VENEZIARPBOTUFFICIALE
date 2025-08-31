@@ -1,0 +1,111 @@
+import json
+from pathlib import Path
+import discord
+from discord.ext import commands
+
+CHANS_FILE = Path("data/channels.json")
+ROLES_FILE = Path("data/roles.json")
+
+def load_json(p: Path):
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def _to_int(val):
+    """Converte in int se possibile, altrimenti restituisce None."""
+    try:
+        return int(val)
+    except Exception:
+        return None
+
+def get_arrivi_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    data = load_json(CHANS_FILE)
+    channels = (data.get("channels") or {})
+    cid = channels.get("arrivi") or channels.get("_arrivi")
+    cid = _to_int(cid)
+    ch = guild.get_channel(cid) if cid else None
+    if isinstance(ch, discord.TextChannel):
+        return ch
+    # fallback: cerca un canale con “arrivi” nel nome
+    for t in guild.text_channels:
+        if "arrivi" in t.name.lower():
+            return t
+    return None
+
+def make_welcome_embed(member: discord.Member) -> discord.Embed:
+    e = discord.Embed(
+        title=f"🎉✨ Benvenuto/a in 🌆 VeneziaRP, {member.name}! 🎭🎊",
+        description=(
+            f"👋🏻 {member.mention}, siamo felicissimi di averti qui con noi! 🥳\n\n"
+            "🏛️ **Da qui inizia la tua avventura:**\n"
+            "➡️ 📝 Richiedi la tua **Cittadinanza** in <#1408590442311717025>\n"
+            "➡️ 📜 Leggi attentamente il **Regolamento** in <#1408586924167532624>\n"
+            "➡️ 🆘 Hai qualche dubbio?  **Ticket di Assistenza** in <#1408589307337375837>\n\n"
+            "🌟 **Consiglio dello Staff**\n"
+            "💡 Rispetta tutti 🤝🏻, vivi il roleplay 🎭 con passione ❤️ e contribuisci alla vita della nostra amata città 🌆.\n\n"
+            "🚀 **Buon divertimento e buon roleplay!** 🎮🎉"
+        ),
+        color=discord.Color.gold()
+    )
+
+    # Thumbnail: avatar utente
+    e.set_thumbnail(url=member.display_avatar.url)
+
+    # Footer: logo server
+    if member.guild.icon:
+        e.set_footer(text="🌟 VeneziaRP | Nuovo Cittadino 🌟", icon_url=member.guild.icon.url)
+    else:
+        e.set_footer(text="🌟 VeneziaRP | Nuovo Cittadino 🌟")
+
+    # Immagine grande
+    e.set_image(url="https://cdn.discordapp.com/attachments/1408599420211171529/1409142664645050438/Photoroom_20250824_14839_PM.jpg?ex=68ac4ddf&is=68aafc5f&hm=deeb1b25d8cd167e3dba79633094c3e28f77c101791c15426a1f9a76b78d3532&")
+
+    return e
+
+async def send_welcome(member: discord.Member):
+    ch = get_arrivi_channel(member.guild)
+    if not ch:
+        return
+    me = member.guild.me  # Member del bot
+    if me is None:
+        return
+    perms = ch.permissions_for(me)
+    if not (perms.view_channel and perms.send_messages and perms.embed_links):
+        return
+    try:
+        await ch.send(embed=make_welcome_embed(member))
+    except discord.Forbidden:
+        pass
+
+class Arrivi(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._welcomed = set()  # evita doppi invii nello stesso avvio
+
+    # NIENTE messaggio su join: aspettiamo la verifica
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        pass
+
+    # Invio benvenuto quando l’utente VIENE VERIFICATO (cambio ruoli)
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        roles = load_json(ROLES_FILE)
+        r_nonver_id = _to_int(roles.get("non_verificato"))
+        r_turista_id = _to_int(roles.get("turista"))
+
+        before_ids = {r.id for r in before.roles}
+        after_ids  = {r.id for r in after.roles}
+
+        gained_turista = r_turista_id and (r_turista_id not in before_ids) and (r_turista_id in after_ids)
+        lost_nonver    = r_nonver_id and (r_nonver_id in before_ids) and (r_nonver_id not in after_ids)
+
+        if (gained_turista or lost_nonver) and after.id not in self._welcomed:
+            self._welcomed.add(after.id)
+            await send_welcome(after)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Arrivi(bot))

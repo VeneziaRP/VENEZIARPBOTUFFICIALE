@@ -1,0 +1,224 @@
+# cogs/lista_staff.py
+from __future__ import annotations
+import json
+import asyncio
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+# ============== CONFIG ==============
+
+LISTA_STAFF_CHANNEL_ID = 1408597864363458630  # canale #lista-staff
+
+ROLES_FILE = Path("data/roles.json")
+STATE_FILE = Path("data/staff_msg.json")  # ricorda il messaggio pubblicato
+
+# Capienze opzionali "(n/cap)" per singolo ruolo (chiave = chiave in roles.json)
+CAPIENZE: Dict[str, Optional[int]] = {
+    # "fondatore": 1,
+    # "moderatore": 10,
+}
+
+# Sezioni (chiave roles.json, etichetta visiva)
+SECTIONS: List[Tuple[str, List[Tuple[str, str]]]] = [
+    ("Direzione", [
+        ("fondatore",        "👑 Fondatore"),
+        ("co_fondatore",     "👑 Co-Fondatore"),
+        ("owner",            "🦁 Owner"),
+        ("co_owner",         "🦁 Co-Owner"),
+        ("amministrazione",  "🏛️ Amministrazione"),
+    ]),
+    ("Gestione Staff", [
+        ("responsabile_staff", "🧱 Resp. Staff"),
+        ("supervisore",        "🛰️ Supervisore"),
+        ("community_manager",  "🧭 Community Manager"),
+        ("recruiter_staff",    "🎯 Recruiter Staff"),
+        ("trainer",            "📚 Trainer / Formatore"),
+    ]),
+    ("Amministratori", [
+        ("admin_sr",  "⚔️ Admin SR"),
+        ("admin",     "⚔️ Admin"),
+        ("admin_jr",  "🗡️ Admin JR"),
+    ]),
+    ("Moderazione", [
+        ("moderatore_sr", "🛡️ Moderatore SR"),
+        ("moderatore",    "🛡️ Moderatore"),
+        ("moderatore_jr", "🛡️ Moderatore JR"),
+        ("helper",        "🔧 Helper"),
+        ("staffer_ferie", "😴 Staffer in ferie"),
+    ]),
+    ("Dipartimenti Extra", [
+        ("grafico",         "🎨 Grafico / Designer"),
+        ("content_creator", "🎥 Content Creator"),
+        ("pr",              "📢 Comunicazioni / PR"),
+        ("developer_bot",   "🤖 Developer BOT"),
+        ("tester_qa",       "🔍 Tester / QA"),
+        ("event_manager",   "🎭 Event Manager"),
+    ]),
+]
+
+UPDATE_DEBOUNCE_SECONDS = 2.0
+# ============ FINE CONFIG ============
+
+
+def _load_roles_map() -> Dict:
+    if ROLES_FILE.exists():
+        try:
+            return json.loads(ROLES_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _read_state() -> Dict:
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _write_state(data: Dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _role_members_mention(guild: discord.Guild, role_id: int) -> List[str]:
+    role = guild.get_role(role_id)
+    if not role:
+        return []
+    members = sorted(role.members, key=lambda m: m.display_name.lower())
+    return [m.mention for m in members]
+
+
+def _fmt_block(guild: discord.Guild, key: str, label: str, rid: Optional[int]) -> str:
+    cap = CAPIENZE.get(key, None)
+
+    if not rid:
+        title = f"**{label}**"
+        body = "_(ruolo non configurato in roles.json)_"
+        return f"{title}\n{body}\n"
+
+    members = _role_members_mention(guild, rid)
+
+    title = f"**{label}**" if cap is None else f"**{label}** ({len(members)}/{cap})"
+    body = "\n".join(members) if members else "— Posto disponibile —"
+    return f"{title}\n{body}\n"
+
+
+def _build_embed(guild: discord.Guild) -> discord.Embed:
+    roles_map = _load_roles_map()
+
+    desc = ("Elenco ufficiale dello **Staff** diviso per sezioni.\n"
+            "L’elenco si aggiorna automaticamente quando i ruoli cambiano.")
+    emb = discord.Embed(title="📋 Lista Staff — VeneziaRP", description=desc, color=discord.Color.blurple())
+
+    for section_name, keys in SECTIONS:
+        chunks: List[str] = []
+        for key, label in keys:
+            rid = roles_map.get(key)
+            try:
+                rid_int = int(rid) if rid else None
+            except Exception:
+                rid_int = None
+            chunks.append(_fmt_block(guild, key, label, rid_int))
+
+        value = "\n".join(chunks).strip() or "— Nessun ruolo configurato —"
+        emb.add_field(name=f"**{section_name}**", value=value, inline=False)
+
+    if guild.icon:
+        emb.set_footer(text="VeneziaRP | Staff Ufficiale", icon_url=guild.icon.url)
+    else:
+        emb.set_footer(text="VeneziaRP | Staff Ufficiale")
+    return emb
+
+
+class ListaStaff(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._update_lock = asyncio.Lock()
+        self._debounce_task: Optional[asyncio.Task] = None
+
+    async def _ensure_member_cache(self, guild: discord.Guild):
+        """Popola la cache membri, così role.members è affidabile dopo i riavvii."""
+        try:
+            await guild.query_members(limit=None, cache=True)
+        except Exception:
+            try:
+                async for _ in guild.fetch_members(limit=None):
+                    pass
+            except Exception:
+                pass
+
+    async def publish_or_update(self, guild: discord.Guild):
+        if guild is None:
+            return
+        ch = guild.get_channel(LISTA_STAFF_CHANNEL_ID)
+        if not isinstance(ch, discord.TextChannel):
+            return
+
+        # ✅ assicurati la cache prima di leggere role.members
+        await self._ensure_member_cache(guild)
+
+        emb = _build_embed(guild)
+
+        state = _read_state()
+        entry = state.get(str(guild.id)) or {}
+        mid = entry.get("message_id")
+
+        try:
+            if mid:
+                msg = await ch.fetch_message(int(mid))
+                await msg.edit(embed=emb)
+            else:
+                msg = await ch.send(embed=emb)
+                state[str(guild.id)] = {"channel_id": ch.id, "message_id": msg.id}
+                _write_state(state)
+        except discord.NotFound:
+            msg = await ch.send(embed=emb)
+            state[str(guild.id)] = {"channel_id": ch.id, "message_id": msg.id}
+            _write_state(state)
+
+    def _schedule_update(self, guild: discord.Guild):
+        async def _runner():
+            await asyncio.sleep(UPDATE_DEBOUNCE_SECONDS)
+            async with self._update_lock:
+                await self.publish_or_update(guild)
+
+        if self._debounce_task and not self._debounce_task.done():
+            self._debounce_task.cancel()
+        self._debounce_task = self.bot.loop.create_task(_runner())
+
+    # ---- eventi che innescano l'update ----
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if before.guild and set(before.roles) != set(after.roles):
+            self._schedule_update(after.guild)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        self._schedule_update(member.guild)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        self._schedule_update(member.guild)
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role: discord.Role):
+        self._schedule_update(role.guild)
+
+    # ---- comando manuale ----
+    @app_commands.command(name="lista_staff", description="Pubblica/aggiorna la lista staff nel canale configurato.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def lista_staff(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
+        await self.publish_or_update(itx.guild)
+        await itx.followup.send("✅ Lista staff pubblicata/aggiornata.", ephemeral=True)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ListaStaff(bot))

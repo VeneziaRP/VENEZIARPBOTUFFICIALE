@@ -1,0 +1,395 @@
+{
+  "1237860059199832097": {
+    "cittadinanza": "Cittadino",
+    "nome_rp": "Gionata",
+    "cognome_rp": "Boschetti",
+    "data_nascita": "21-03-1999",
+    "eta_rp": "26",
+    "genere": "Uomo",
+    "nazionalita": "Italiana",
+    "citta_rp": "",
+    "lavoro_rp": "Nessuno",
+    "interessi": "Musica",
+    "competenze": "Nessuno",
+    "orari": "",
+    "licenze": "",
+    "bio": "",
+    "roblox": "Nik20bhmg",
+    "social": "Nik20bhmg",
+    "reputazione": 50,
+    "privacy_contatti": true,
+    "docs": {
+      "cittadinanza": {
+        "stato": true,
+        "numero": "CIT-2097",
+        "rilasciata_il": "2025-08-24",
+        "rilasciata_da": "Comune di Venezia",
+        "note": ""
+      },
+      "patenti": {
+        "A": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "B": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "C": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        },
+        "NAUTICA": {
+          "stato": false,
+          "numero": "",
+          "rilasciata_il": "",
+          "scadenza": ""
+        }
+      }
+    },
+    "bank": {
+      "iban": "IT38X1234567890059199832097"
+    }
+  },
+  "profiles": {
+    "1379377190700978247": {
+      "cittadinanza": "Cittadino",
+      "nome_rp": "Gionata",
+      "cognome_rp": "Boschetti",
+      "data_nascita": "21-03-1999",
+      "eta_rp": "26",
+      "genere": "Uomo",
+      "nazionalita": "Italiana",
+      "citta_rp": "",
+      "lavoro_rp": "Nessuno",
+      "interessi": "Musica",
+      "competenze": "Niente",
+      "orari": "",
+      "licenze": "",
+      "bio": "",
+      "roblox": "Nik20bhmg",
+      "social": "Nik20bhmg",
+      "reputazione": 50,
+      "privacy_contatti": true,
+      "docs": {
+        "cittadinanza": {
+          "stato": true,
+          "numero": "CIT-8247",
+          "rilasciata_il": "2025-08-25",
+          "rilasciata_da": "Comune di Venezia",
+          "note": ""
+        },
+        "patenti": {
+          "A": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "B": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "C": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "NAUTICA": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          }
+        }
+      },
+      "bank": {
+        "iban": "IT43X1234567890190700978247"
+      }
+    },
+    "968907423404396594": {
+      "nome_rp": "Michele",
+      "identity_card": null,
+      "cittadinanza": "Cittadino",
+      "cognome_rp": "Rosso",
+      "data_nascita": "27-11-2000",
+      "eta_rp": "24",
+      "genere": "Uomo",
+      "nazionalita": "Italiana",
+      "citta_rp": "",
+      "lavoro_rp": "Vigili del fuoco",
+      "interessi": "Cucina",
+      "competenze": "Primo soccorso",
+      "orari": "",
+      "licenze": "",
+      "bio": "Chill",
+      "roblox": "Soardecember789",
+      "social": "Soardecember789",
+      "reputazione": 50,
+      "privacy_contatti": true,
+      "docs": {
+        "cittadinanza": {
+          "stato": true,
+          "numero": "CIT-6594",
+          "rilasciata_il": "2025-08-25",
+          "rilasciata_da": "Comune di Venezia",
+          "note": ""
+        },
+        "patenti": {
+          "A": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "B": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "C": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "NAUTICA": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          }
+        }
+      },
+      "bank": {
+        "iban": "IT33X1234567890423404396594"
+      },
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": []
+    },
+    "1363573122510618875": {
+      "nome_rp": "Francesco",
+      "identity_card": null,
+      "cittadinanza": "Cittadino",
+      "cognome_rp": "Cagnazzo",
+      "data_nascita": "05-12-2000",
+      "eta_rp": "24",
+      "genere": "Uomo",
+      "nazionalita": "Italiano",
+      "citta_rp": "",
+      "lavoro_rp": "Nessuno",
+      "interessi": "Cucina",
+      "competenze": "Guida",
+      "orari": "",
+      "licenze": "",
+      "bio": "",
+      "roblox": "Frens068",
+      "social": "Frens068",
+      "reputazione": 50,
+      "privacy_contatti": true,
+      "docs": {
+        "cittadinanza": {
+          "stato": true,
+          "numero": "CIT-8875",
+          "rilasciata_il": "2025-08-25",
+          "rilasciata_da": "Comune di Venezia",
+          "note": ""
+        },
+        "patenti": {
+          "A": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "B": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "C": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "NAUTICA": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          }
+        }
+      },
+      "bank": {
+        "iban": "IT30X1234567890122510618875"
+      },
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": []
+    },
+    "1370879590393974878": {
+      "nome_rp": null,
+      "identity_card": null
+    },
+    "1277931183799537687": {
+      "nome_rp": null,
+      "identity_card": null,
+      "cittadinanza": "Turista"
+    },
+    "1237860059199832097": {
+      "cittadinanza": "Cittadino",
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": [],
+      "nome_rp": "Gionata",
+      "cognome_rp": "Boschetti",
+      "data_nascita": "21-03-1999",
+      "eta_rp": "26",
+      "genere": "Uomo",
+      "nazionalita": "Italiana",
+      "citta_rp": "",
+      "lavoro_rp": "Nessuno",
+      "interessi": "Musica",
+      "competenze": "Nessuno",
+      "orari": "",
+      "licenze": "",
+      "bio": "",
+      "roblox": "Nik20bhmg",
+      "social": "Nik20bhmg",
+      "reputazione": 50,
+      "privacy_contatti": true,
+      "docs": {
+        "cittadinanza": {
+          "stato": true,
+          "numero": "CIT-2097",
+          "rilasciata_il": "2025-08-26",
+          "rilasciata_da": "Comune di Venezia",
+          "note": ""
+        },
+        "patenti": {
+          "A": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "B": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "C": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "NAUTICA": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          }
+        }
+      },
+      "bank": {
+        "iban": "IT38X1234567890059199832097"
+      }
+    },
+    "1063714439423074424": {
+      "nome_rp": null,
+      "identity_card": null,
+      "cittadinanza": "Turista",
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": []
+    },
+    "1407370232846225519": {
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": []
+    },
+    "1246781689561219112": {
+      "nome_rp": "Orazio",
+      "identity_card": null,
+      "cittadinanza": "Cittadino",
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": [],
+      "cognome_rp": "Santiago Del Vecchio",
+      "data_nascita": "27-02-2000",
+      "eta_rp": "25",
+      "genere": "Uomo",
+      "nazionalita": "Italiana",
+      "citta_rp": "",
+      "lavoro_rp": "Nessuno",
+      "interessi": "Guidare",
+      "competenze": "Guida",
+      "orari": "",
+      "licenze": "",
+      "bio": "Sono nero di carnagione",
+      "roblox": "sangiooooopanni",
+      "social": "sangiooooopanni",
+      "reputazione": 50,
+      "privacy_contatti": true,
+      "docs": {
+        "cittadinanza": {
+          "stato": true,
+          "numero": "CIT-9112",
+          "rilasciata_il": "2025-08-26",
+          "rilasciata_da": "Comune di Venezia",
+          "note": ""
+        },
+        "patenti": {
+          "A": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "B": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "C": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          },
+          "NAUTICA": {
+            "stato": false,
+            "numero": "",
+            "rilasciata_il": "",
+            "scadenza": ""
+          }
+        }
+      },
+      "bank": {
+        "iban": "IT21X1234567890689561219112"
+      }
+    },
+    "1347616968878067742": {
+      "cittadinanza": "Cittadino",
+      "lavoro": null,
+      "fazioni": [],
+      "patenti_extra": []
+    }
+  }
+}

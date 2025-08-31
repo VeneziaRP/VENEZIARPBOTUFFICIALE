@@ -1,0 +1,74 @@
+# cogs/ticket.py
+from __future__ import annotations
+
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+# View nuove + compatibilità con messaggi già pubblicati
+from views.ticket_view import (
+    TicketView,                     # select nuova: custom_id = "ticket:select"
+    TicketPanelPersistentLegacy,    # compat vecchia select: "ticket_select"
+    TicketActionPersistentLegacy,   # compat vecchi bottoni: "ticket_take", ...
+)
+
+# ───────────────── CONFIG (facoltativa) ─────────────────
+# Se vuoi limitare la pubblicazione del pannello a specifici canali,
+# inserisci qui i loro ID; lascia set() per non limitare nulla.
+CANALI_ABILITATI: set[int] = {
+    1408589307337375837,  # es. #tickets
+    # ...altri ID canale se vuoi
+}
+
+PANEL_TITLE = "🎫 APRI UN TICKET — VeneziaRP"
+# ────────────────────────────────────────────────────────
+
+
+class Ticket(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="ticket", description="Invia il pannello per aprire un ticket.")
+    @app_commands.checks.has_permissions(manage_guild=True)  # solo staff può pubblicare il pannello
+    async def ticket(self, interaction: discord.Interaction):
+        # opzionale: blocca l’uso fuori dai canali consentiti
+        if CANALI_ABILITATI and (interaction.channel_id not in CANALI_ABILITATI):
+            await interaction.response.send_message(
+                "❌ Comando non consentito in questo canale.",
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title=PANEL_TITLE,
+            description=(
+                "Benvenuto nel **centro assistenza di VeneziaRP**!\n\n"
+                "Hai bisogno di aiuto, vuoi contattare l'amministrazione o segnalare un problema?\n"
+                "Apri un ticket scegliendo la **categoria più adatta** dal menu qui sotto.\n\n"
+                "🔹 **Categorie disponibili:**\n"
+                "• Assistenza tecnica o gestionale\n"
+                "• Richieste amministrative o di unban\n"
+                "• Proposte, segnalazioni o problemi con il bot\n"
+                "• Personaggi, lavoro RP, sanzioni e altro ancora...\n\n"
+                "📌 Lo staff ti risponderà **il prima possibile**.\n"
+                "⚠️ **Abuso del sistema ticket** può comportare sanzioni.\n"
+            ),
+            color=discord.Color.blurple()
+        )
+        # banner (facoltativo)
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1396088402532634695/1400632824964321360/7753585D-5BA8-415E-A847-5BC346F46B66.png")
+        # footer con logo server se presente
+        if interaction.guild and interaction.guild.icon:
+            embed.set_footer(text="VeneziaRP | Supporto e Assistenza", icon_url=interaction.guild.icon.url)
+        else:
+            embed.set_footer(text="VeneziaRP | Supporto e Assistenza")
+
+        await interaction.response.send_message(embed=embed, view=TicketView(), ephemeral=False)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Ticket(bot))
+    # 🔒 Importantissimo: registra le view persistenti per gestire anche messaggi vecchi
+    bot.add_view(TicketView())                   # nuova select (custom_id = "ticket:select")
+    bot.add_view(TicketPanelPersistentLegacy())  # vecchia select (custom_id = "ticket_select")
+    bot.add_view(TicketActionPersistentLegacy()) # vecchi bottoni: "ticket_take", "ticket_close_now", "ticket_close_reason"

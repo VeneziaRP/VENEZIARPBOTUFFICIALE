@@ -1,0 +1,134 @@
+import json
+from pathlib import Path
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+ROLES_FILE = Path("data/roles.json")
+CHANS_FILE = Path("data/channels.json")
+PANEL_FILE = Path("data/verify_panel.json")
+for p in (ROLES_FILE, CHANS_FILE, PANEL_FILE):
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+def load_json(path: Path) -> dict:
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except:
+            return {}
+    return {}
+
+def save_json(path: Path, data: dict):
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def get_role(g: discord.Guild, rid):
+    return g.get_role(rid) if rid else None
+
+# ================== MODALE ==================
+VERIFY_PHRASE = "VeneziaRP"
+
+class VerificaModal(discord.ui.Modal, title="Verifica — conferma regolamento"):
+    def __init__(self, parent_cog: "Verifica"):
+        super().__init__(timeout=None)
+        self.parent_cog = parent_cog
+
+        self.answer = discord.ui.TextInput(
+            label="Scrivi la frase di conferma",
+            placeholder=VERIFY_PHRASE,
+            style=discord.TextStyle.short,
+            max_length=100,
+            required=True,
+        )
+        self.add_item(self.answer)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        attempt = self.answer.value.strip()
+        if attempt.lower() == VERIFY_PHRASE.lower():
+            await self.parent_cog._grant_verified(interaction)
+        else:
+            await interaction.response.send_message(
+                f"❌ Devi scrivere esattamente:\n`{VERIFY_PHRASE}`",
+                ephemeral=True
+            )
+
+# ================== VIEW ==================
+class VerifyView(discord.ui.View):
+    def __init__(self, parent_cog: "Verifica"):
+        super().__init__(timeout=None)
+        self.parent_cog = parent_cog
+
+    @discord.ui.button(label="✅ Verificati", style=discord.ButtonStyle.success, custom_id="venezia:verify")
+    async def verify(self, itx: discord.Interaction, _):
+        await itx.response.send_modal(VerificaModal(self.parent_cog))
+
+# ================== COG ==================
+class Verifica(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    async def cog_load(self):
+        self.bot.add_view(VerifyView(self))  # view persistente
+
+    async def _grant_verified(self, interaction: discord.Interaction):
+        g = interaction.guild
+        user = interaction.user
+        roles = load_json(ROLES_FILE)
+        r_nonver = get_role(g, roles.get("non_verificato"))
+        r_turista = get_role(g, roles.get("turista"))
+
+        try:
+            if r_nonver and r_nonver in user.roles:
+                await user.remove_roles(r_nonver, reason="Verifica completata")
+            if r_turista and r_turista not in user.roles:
+                await user.add_roles(r_turista, reason="Verifica completata")
+        except discord.Forbidden:
+            return await interaction.response.send_message("❌ Non ho i permessi per assegnare i ruoli.", ephemeral=True)
+
+        await interaction.response.send_message("✅ Verifica completata! Benvenuto/a 🎉", ephemeral=True)
+
+    # ---- pannello (embed + bottone) ----
+    async def _upsert_panel(self, g: discord.Guild) -> str:
+        data = load_json(CHANS_FILE)
+        cid = (data.get("channels") or {}).get("verifica")
+        ch = g.get_channel(cid) if cid else None
+        if not isinstance(ch, discord.TextChannel):
+            return "❌ Canale verifica non trovato (configura channels.json)."
+
+        embed = discord.Embed(
+            title="🔐 Accesso al Server",
+            description=(
+                "👋 **Benvenuto in VeneziaRP!**\n\n"
+                "Per accedere alla community:\n"
+                "1️⃣ Premi **Verificati**\n"
+                f"2️⃣ Scrivi esattamente: `{VERIFY_PHRASE}`\n\n"
+                "Se hai problemi, contatta lo staff."
+            ),
+            color=discord.Color.green()
+        )
+        embed.set_footer(text="VeneziaRP | Verifica Utenti")
+
+        # se c’è già un pannello salvato → aggiorna
+        panel = load_json(PANEL_FILE)
+        if panel.get("channel_id") == ch.id and panel.get("message_id"):
+            try:
+                old = await ch.fetch_message(int(panel["message_id"]))
+                await old.edit(embed=embed, view=VerifyView(self))
+                return f"✅ Pannello aggiornato in {ch.mention}."
+            except discord.NotFound:
+                pass
+
+        # altrimenti invia nuovo
+        msg = await ch.send(embed=embed, view=VerifyView(self))
+        save_json(PANEL_FILE, {"channel_id": ch.id, "message_id": msg.id})
+        return f"✅ Pannello creato in {ch.mention}."
+
+    # ---- comando setup pannello ----
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.command(name="pannello_verifica", description="Crea/aggiorna il pannello di verifica (frase fissa).")
+    async def pannello_verifica(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
+        msg = await self._upsert_panel(itx.guild)
+        await itx.followup.send(msg, ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Verifica(bot))

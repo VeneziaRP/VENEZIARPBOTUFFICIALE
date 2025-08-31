@@ -1,0 +1,75 @@
+# views/cittadinanza_view.py
+import discord
+from discord.ext import commands
+from modals.cittadinanza_modale import CittadinanzaModalStep1
+from views.cittadinanza_review_view import is_pending, is_already_approved
+
+START_CUSTOM_ID = "cittadinanza_start"  # utile se vuoi registrare la View come persistente
+
+
+class CittadinanzaView(discord.ui.View):
+    def __init__(self, bot: commands.Bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self._locks: set[int] = set()  # anti doppio-click per utente
+
+    async def _safe_reply(self, interaction: discord.Interaction, *args, **kwargs):
+        """Risponde senza generare 40060: se hai già risposto, usa followup."""
+        if interaction.response.is_done():
+            await interaction.followup.send(*args, **kwargs)
+        else:
+            await interaction.response.send_message(*args, **kwargs)
+
+    @discord.ui.button(
+        label="Richiedi Cittadinanza",
+        style=discord.ButtonStyle.success,
+        emoji="🪪",
+        custom_id=START_CUSTOM_ID
+    )
+    async def start(self, interaction: discord.Interaction, _: discord.ui.Button):
+        # Solo in server
+        if not interaction.guild:
+            return await self._safe_reply(
+                interaction, "❌ Questo pulsante funziona solo in un server.", ephemeral=True
+            )
+
+        uid = interaction.user.id
+
+        # blocco anti doppio click
+        if uid in self._locks:
+            return await self._safe_reply(
+                interaction, "⏳ Stai già aprendo la richiesta...", ephemeral=True
+            )
+        self._locks.add(uid)
+
+        try:
+            # Blocchi rapidi
+            if is_already_approved(uid):
+                return await self._safe_reply(
+                    interaction, "ℹ️ Sei già **Cittadino**.", ephemeral=True
+                )
+
+            if is_pending(uid):
+                return await self._safe_reply(
+                    interaction, "⏳ Hai già una **richiesta in revisione**.", ephemeral=True
+                )
+
+            # Apri la modale Step 1 (la modale deve essere la PRIMA risposta)
+            try:
+                if interaction.response.is_done():
+                    # se per qualche motivo abbiamo già risposto, non possiamo aprire la modale
+                    return await interaction.followup.send(
+                        "ℹ️ Hai già un'azione in corso. Riprova tra un attimo.", ephemeral=True
+                    )
+
+                await interaction.response.send_modal(
+                    CittadinanzaModalStep1(interaction.client, interaction.user)
+                )
+
+            except discord.InteractionResponded:
+                # click multiplo: la prima risposta ha già “acknowledged” l’interaction
+                pass
+
+        finally:
+            # rilascia il lock dopo poco, per sicurezza
+            self._locks.discard(uid)

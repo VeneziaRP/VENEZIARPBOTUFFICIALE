@@ -1,0 +1,97 @@
+# cogs/channels_dump.py
+import json
+from pathlib import Path
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+OUT = Path("data/channels.json")
+OUT.parent.mkdir(parents=True, exist_ok=True)
+
+# Mappatura "chiave amichevole" -> prefisso per riconoscere categorie note (facoltativo)
+KNOWN_KEYS = {
+    "verifica": ["verifica"],
+    "informazioni": ["informazioni", "info"],
+    "assistenza": ["assistenza", "supporto"],
+    "anagrafe": ["anagrafe"],
+    "community_off": ["community (off", "off-rp", "off rp", "offrp"],
+    "community_rp": ["community (rp", "rp)"," rp"],
+    "concorsi": ["gestionale concorsi", "concorsi"],
+    "collab": ["collaborazioni", "partner"],
+    "sanzioni": ["sanzioni"],
+    "staff": ["staff di venezia", "staff"],
+    "logs": ["categoria logs", "logs"],
+    "registro": ["registro", "registro membri"],
+    "uffici": ["uffici", "uffici personali"]
+}
+
+def guess_key(cat_name: str) -> str | None:
+    n = cat_name.lower()
+    for key, needles in KNOWN_KEYS.items():
+        for needle in needles:
+            if needle in n:
+                return key
+    return None
+
+class ChannelsDump(commands.Cog):
+    def __init__(self, bot): self.bot = bot
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.command(name="dump_channels", description="Scansiona il server e genera data/channels.json con TUTTI i canali.")
+    async def dump_channels(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True, thinking=True)
+        g = itx.guild
+
+        data = {"categories": {}, "channels": {}, "voices": {}}
+
+        # 1) Categorie
+        for cat in g.categories:
+            key = guess_key(cat.name) or f"cat_{cat.id}"
+            data["categories"][key] = cat.id
+
+            # 2) Canali testuali sotto la categoria
+            for c in cat.text_channels:
+                ckey = c.name
+                # normalizza: togli spazi/emoji nei nomi chiave del JSON
+                safe = "".join(ch for ch in ckey if ch.isalnum() or ch in ("_", "-", "・")).replace("・","_").replace("-","_")
+                data["channels"][safe] = c.id
+
+            # 3) Canali vocali sotto la categoria
+            for v in cat.voice_channels:
+                vkey = v.name
+                safe = "".join(ch for ch in vkey if ch.isalnum() or ch in ("_", "-", "・")).replace("・","_").replace("-","_")
+                data["voices"][safe] = v.id
+
+        # 4) Canali fuori categoria (rari ma possibili)
+        for c in g.text_channels:
+            if c.category_id is None:
+                safe = "".join(ch for ch in c.name if ch.isalnum() or ch in ("_", "-", "・")).replace("・","_").replace("-","_")
+                data["channels"][safe] = c.id
+        for v in g.voice_channels:
+            if v.category_id is None:
+                safe = "".join(ch for ch in v.name if v.name.isalnum() or ch in ("_", "-", "・")).replace("・","_").replace("-","_")
+                data["voices"][safe] = v.id
+
+        OUT.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Messaggio breve + suggerimenti di mappatura chiavi speciali
+        hints = []
+        # prova a suggerire le chiavi speciali che userà il permessi.py
+        must_have = ["verifica", "informazioni", "assistenza", "anagrafe", "community_off", "community_rp",
+                     "concorsi", "collab", "sanzioni", "staff", "logs", "registro", "uffici"]
+        missing = [k for k in must_have if k not in data["categories"]]
+        if missing:
+            hints.append("Categorie note mancanti da mappare manualmente: " + ", ".join(missing))
+        hints.append("Ricorda di individuare nel blocco 'channels' le chiavi dei canali speciali:")
+        hints.append("- `verifica` (es: ✅・verificarsi)")
+        hints.append("- `cittadinanza` (es: #cittadinanza)")
+
+        await itx.followup.send(
+            "✅ `data/channels.json` generato con tutte le categorie/canali.\n"
+            "Aprilo e, se vuoi, rinomina le *chiavi* per renderle più parlanti.\n"
+            + "\n".join(f"• {h}" for h in hints),
+            ephemeral=True
+        )
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ChannelsDump(bot))

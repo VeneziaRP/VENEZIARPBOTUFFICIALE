@@ -1,0 +1,50 @@
+import discord
+from discord.ext import commands
+
+class Partenze(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        canale_id = 1408586467982446693  # ID del canale partenze
+        canale = member.guild.get_channel(canale_id)
+        if not canale:
+            return
+
+        # controllo permessi
+        me = member.guild.me
+        if not me or not canale.permissions_for(me).send_messages:
+            return
+
+        embed = discord.Embed(
+            title="👋🏻 Addio cittadino",
+            description=(
+                "🕊️ **Un cittadino ha lasciato la città...**\n\n"
+                f"Ci mancherai, **{member.display_name}**\n"
+                "Speriamo di rivederti presto nelle vie di **VeneziaRP**.\n\n"
+                "🤍 La tua presenza ha reso questa città un posto migliore.\n"
+                "> *\"⚜️ Ogni gondola parte, ma il ricordo resta.\"*"
+            ),
+            color=discord.Color.dark_gray()
+        )
+
+        # Thumbnail con avatar se disponibile
+        if member.display_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
+
+        # Immagine di sfondo
+        embed.set_image(
+            url="https://cdn.discordapp.com/attachments/1408599420211171529/1409142670164758548/Photoroom_20250824_14920_PM.jpg?ex=68ac4de1&is=68aafc61&hm=6cfdeaef83a67fa89e697c6457a7abd52501026a77c8dbdab449d17adf98a186&"
+        )
+
+        # Footer con icona server
+        embed.set_footer(
+            text="VeneziaRP | Partenza",
+            icon_url=member.guild.icon.url if member.guild.icon else None
+        )
+
+        await canale.send(embed=embed)
+
+async def setup(bot):
+    await bot.add_cog(Partenze(bot))

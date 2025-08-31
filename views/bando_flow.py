@@ -1,0 +1,356 @@
+from __future__ import annotations
+from typing import List, Dict, Tuple, Optional
+import asyncio
+import discord
+
+from utils.bando_embed import build_candidatura_embed
+from .bando_review_view import BandoReviewView
+
+# canale staff dove inviare le candidature
+CANALE_STAFF_CANDIDATURE_ID = 1408596591673348116
+
+# banca domande (20)
+QUIZ_DOMANDE: List[Tuple[str, List[str], int]] = [
+    # 1
+    ("Cos'è un esempio di NO FEAR?",
+     ["Scappare quando vieni minacciato da un'arma",
+      "Ignorare completamente una minaccia di morte e non reagire",
+      "Tentare di negoziare con un rapinatore armato",
+      "Mostrare paura e cercare aiuto quando si è feriti gravemente"], 1),
+
+    # 2
+    ("Cosa significa RDM?",
+     ["Usare informazioni OOC per vantaggi in RP",
+      "Uccidere o attaccare un altro giocatore senza giustificazione RP",
+      "Scappare da un inseguimento RP",
+      "Disconnettersi durante un combattimento"], 1),
+
+    # 3
+    ("Cosa significa VDM?",
+     ["Investire volontariamente qualcuno senza alcun motivo RP",
+      "Parcheggiare in zona vietata",
+      "Guidare lentamente senza motivo",
+      "Riparare il veicolo durante un inseguimento"], 0),
+
+    # 4
+    ("Cosa significa L.T.A.A.?",
+     ["Leaving To Avoid Arrest — Disconnettersi per evitare arresto",
+      "Legal Traffic Action Allowed — Azione legale nel traffico",
+      "Last Team Action Approved — Ultima azione squadra approvata",
+      "Legitimate Team Arrest Action — Arresto legittimo in squadra"], 0),
+
+    # 5
+    ("Qual è un comportamento di COP BAITING?",
+     ["Aiutare la polizia in una scena RP",
+      "Scappare da un arresto RP giustificato",
+      "Provocare la polizia senza contesto RP causando inseguimenti inutili",
+      "Rispettare il regolamento RolePlay"], 2),
+
+    # 6
+    ("Che cos'è il Car Surf?",
+     ["Scappare da un inseguimento in macchina",
+      "Guidare un veicolo molto velocemente",
+      "Parcheggiare un veicolo in posti vietati",
+      "Stare sul tetto di un veicolo in movimento senza motivo RP"], 3),
+
+    # 7
+    ("Qual è il comportamento più corretto per uno staffer durante una segnalazione?",
+     ["Ignorare la segnalazione e continuare a giocare",
+      "Gestire la segnalazione in modo imparziale e professionale",
+      "Favorire gli amici durante le decisioni",
+      "Rispondere sempre con tono aggressivo"], 1),
+
+    # 8
+    ("Come deve comportarsi uno staffer quando trova un giocatore che infrange le regole?",
+     ["Punire senza ascoltare la versione del giocatore",
+      "Ignorare l'infrazione se il giocatore è famoso",
+      "Seguire il regolamento e ascoltare entrambe le parti prima di decidere",
+      "Risolvere tutto con minacce personali"], 2),
+
+    # 9
+    ("Qual è l'atteggiamento corretto di uno staffer in chat pubblica?",
+     ["Usare insulti per farsi rispettare",
+      "Usare linguaggio educato e rispettoso",
+      "Ignorare completamente i giocatori",
+      "Divulgare informazioni private dei giocatori"], 1),
+
+    # 10
+    ("Cosa deve fare uno staffer se riceve una richiesta di aiuto in gioco?",
+     ["Usare la situazione per vantaggi personali",
+      "Ignorare la richiesta se è impegnato",
+      "Dire al giocatore di risolvere da solo",
+      "Rispondere rapidamente e fornire supporto utile"], 3),
+
+    # 11
+    ("Qual è il ruolo principale di uno staffer in un server RP?",
+     ["Far rispettare le regole per mantenere un ambiente sano e divertente",
+      "Favorire certi giocatori a discapito degli altri",
+      "Creare conflitti tra giocatori",
+      "Usare il potere per dominare gli altri"], 0),
+
+    # 12
+    ("Che cos'è il Metagaming?",
+     ["Usare informazioni OOC per influenzare le azioni in RP",
+      "Interpretare correttamente il proprio personaggio",
+      "Giocare in gruppo organizzato",
+      "Costruire una storia del personaggio dettagliata"], 0),
+
+    # 13
+    ("Che cos'è il Powergaming?",
+     ["Forzare azioni impossibili sugli altri senza possibilità di reazione",
+      "Allenare molto le proprie abilità",
+      "Guidare veicoli potenti",
+      "Usare mod grafiche migliorative"], 0),
+
+    # 14
+    ("Che cos'è il FailRP?",
+     ["Comportamenti non realistici che rompono l'immersione/ruolo",
+      "Fallire un mini-gioco",
+      "Perdere un combattimento",
+      "Sbagliare tasto in auto"], 0),
+
+    # 15
+    ("Se ricevi due versioni contrastanti di un fatto, cosa fai?",
+     ["Credi alla prima persona che ti parla",
+      "Applichi subito una sanzione a entrambi",
+      "Ascolti entrambe le parti e verifichi log/prove",
+      "Ignori la situazione"], 2),
+
+    # 16
+    ("Se una scena RP sta degenerando (insulti/escalation), cosa fai?",
+     ["La lasci proseguire per vedere come va",
+      "Intervieni, separi le parti e chiarisci fuori RP se necessario",
+      "Sanzioni tutti senza ascoltare",
+      "Ti schieri con chi conosci"], 1),
+
+    # 17
+    ("Durante una sparatoria RP con civili vicini, qual è la priorità dello staff?",
+     ["Lasciare tutto com'è per realismo",
+      "Spawnare equipaggiamenti per i civili",
+      "Garantire sicurezza/ordine e prevenire abusi o danni collaterali",
+      "Nascondersi e osservare"], 2),
+
+    # 18
+    ("Prima di emettere una sanzione, cosa dovresti fare (se possibile)?",
+     ["Consultare linee guida e verificare prove/log",
+      "Chiedere agli amici cosa fare",
+      "Punire a sentimento",
+      "Aprire un sondaggio pubblico"], 0),
+
+    # 19
+    ("Se sei coinvolto personalmente o hai un conflitto di interessi in una segnalazione…",
+     ["Ti astieni e passi la pratica a un altro staffer",
+      "Gestisci tu per fare prima",
+      "Sanzioni l'altra parte",
+      "Chiudi il ticket senza spiegazioni"], 0),
+
+    # 20
+    ("Chi può annullare o modificare una sanzione già applicata?",
+     ["Chiunque dello staff",
+      "Solo i ranghi superiori/management secondo le policy",
+      "Il giocatore sanzionato se si scusa",
+      "Nessuno, mai"], 1),
+]
+
+EXTRA_DOMANDA_PROMPT = "Se due staffer litigano pubblicamente in chat, cosa faresti?"
+
+# ===== STATO =====
+class BandoSessionState:
+    def __init__(self, user_id: int):
+        self.user_id = user_id
+        # modale iniziale
+        self.nome: str = ""
+        self.eta: str = ""
+        self.disponibilita: str = ""
+        self.esperienze: str = ""
+        self.motivazione: str = ""
+        # quiz
+        self.idx: int = 0
+        self.corrette: int = 0
+        self.risposte: List[int] = []  # indice scelto
+        # extra
+        self.extra: Optional[str] = None
+
+SESSIONS: Dict[int, BandoSessionState] = {}
+
+# ===== MODALE DATI INIZIALI =====
+class CandidaturaIntroModal(discord.ui.Modal, title="Candidatura Staff — Dati iniziali"):
+    def __init__(self, user: discord.Member):
+        super().__init__(timeout=None)
+        self.user = user
+
+        self.nome = discord.ui.TextInput(label="Nome", placeholder="Il tuo nome/alias", max_length=64, required=True)
+        self.eta = discord.ui.TextInput(label="Età", placeholder="Es. 16", max_length=4, required=True)
+        self.disponibilita = discord.ui.TextInput(label="Disponibilità", placeholder="Es. 3 sere a settimana", max_length=100, required=True)
+        self.esperienze = discord.ui.TextInput(label="Esperienze", style=discord.TextStyle.paragraph, placeholder="Eventuale esperienza come staff", max_length=400, required=False)
+        self.motivazione = discord.ui.TextInput(label="Perché vuoi entrare?", style=discord.TextStyle.paragraph, placeholder="Una breve motivazione", max_length=400, required=True)
+
+        for i in (self.nome, self.eta, self.disponibilita, self.esperienze, self.motivazione):
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        st = SESSIONS.get(interaction.user.id) or BandoSessionState(interaction.user.id)
+        st.nome = self.nome.value.strip()
+        st.eta = self.eta.value.strip()
+        st.disponibilita = self.disponibilita.value.strip()
+        st.esperienze = (self.esperienze.value or "").strip()
+        st.motivazione = self.motivazione.value.strip()
+        st.idx = 0
+        st.corrette = 0
+        st.risposte = []
+        SESSIONS[interaction.user.id] = st
+        await send_quiz_question(interaction, st, first=True)
+
+# ===== QUIZ =====
+def _format_options(options: List[str]) -> str:
+    return "\n".join(f"**{chr(65+i)})** {t}" for i, t in enumerate(options))
+
+class QuizQuestionView(discord.ui.View):
+    def __init__(self, state: BandoSessionState):
+        super().__init__(timeout=180)
+        self.state = state
+        for i in range(len(QUIZ_DOMANDE[state.idx][1])):
+            self.add_item(OptionButton(label=chr(65+i), index=i, state=state))
+
+class OptionButton(discord.ui.Button):
+    def __init__(self, label: str, index: int, state: BandoSessionState):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary)
+        self.index = index
+        self.state = state
+
+    async def callback(self, interaction: discord.Interaction):
+        # solo il candidato può rispondere
+        if interaction.user.id != self.state.user_id:
+            return await interaction.response.send_message("Questa domanda non è per te.", ephemeral=True)
+
+        prompt, opts, correct = QUIZ_DOMANDE[self.state.idx]
+        self.state.risposte.append(self.index)
+        is_ok = (self.index == correct)
+        if is_ok:
+            self.state.corrette += 1
+
+        # disabilita bottoni e mostra feedback
+        for c in self.view.children:
+            c.disabled = True
+        feedback = "✅ Corretto!" if is_ok else f"❌ Errato. Risposta corretta: **{chr(65+correct)}) {opts[correct]}**"
+        try:
+            await interaction.response.edit_message(content=feedback, view=self.view)
+        except discord.InteractionResponded:
+            await interaction.followup.edit_message(interaction.message.id, content=feedback, view=self.view)
+
+        # prossima
+        self.state.idx += 1
+        await send_quiz_question(interaction, self.state, first=False)
+
+async def send_quiz_question(interaction: discord.Interaction, state: BandoSessionState, *, first: bool):
+    if state.idx >= len(QUIZ_DOMANDE):
+        # finite: passa alla domanda extra
+        await ask_extra_question(interaction, state)
+        return
+
+    q, opts, _ = QUIZ_DOMANDE[state.idx]
+    emb = discord.Embed(
+        title=f"Quiz Regolamento • Domanda {state.idx+1}/{len(QUIZ_DOMANDE)}",
+        description=f"{q}\n\n{_format_options(opts)}",
+        color=discord.Color.blurple(),
+    )
+    view = QuizQuestionView(state)
+    if first:
+        await interaction.response.send_message(embed=emb, view=view, ephemeral=True)
+    else:
+        await interaction.followup.send(embed=emb, view=view, ephemeral=True)
+
+# ===== DOMANDA EXTRA =====
+class ExtraQuestionModal(discord.ui.Modal, title="Domanda EXTRA (facoltativa)"):
+    def __init__(self, state: BandoSessionState):
+        super().__init__(timeout=None)
+        self.state = state
+        self.answer = discord.ui.TextInput(
+            label="Risposta (max 400)",
+            placeholder=EXTRA_DOMANDA_PROMPT,
+            style=discord.TextStyle.paragraph,
+            max_length=400,
+            required=False,
+        )
+        self.add_item(self.answer)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Salva la risposta e DEFER per poter usare followup
+        self.state.extra = (self.answer.value or "").strip() or None
+        await interaction.response.defer(ephemeral=True)
+        await conclude_and_submit(interaction, self.state)
+
+
+class ExtraOpenView(discord.ui.View):
+    def __init__(self, state: BandoSessionState):
+        super().__init__(timeout=120)
+        self.state = state
+
+    @discord.ui.button(label="✍️ Rispondi alla domanda EXTRA", style=discord.ButtonStyle.primary)
+    async def open_extra(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.send_modal(ExtraQuestionModal(self.state))
+
+    @discord.ui.button(label="⏭️ Salta", style=discord.ButtonStyle.secondary)
+    async def skip_extra(self, interaction: discord.Interaction, _: discord.ui.Button):
+        # Nessuna risposta extra -> chiudiamo
+        self.state.extra = None
+        await interaction.response.defer(ephemeral=True)
+        await conclude_and_submit(interaction, self.state)
+
+
+async def ask_extra_question(interaction: discord.Interaction, state: BandoSessionState):
+    # invito a rispondere all’extra (facoltativa)
+    await interaction.followup.send(
+        "🟨 **Domanda EXTRA (facoltativa):**\n"
+        f"_{EXTRA_DOMANDA_PROMPT}_\n\n"
+        "Premi **Rispondi** per scrivere la tua risposta oppure **Salta** per inviare subito la candidatura.",
+        view=ExtraOpenView(state),
+        ephemeral=True,
+    )
+
+# ===== INVIO AL CANALE STAFF + CHIUSURA =====
+async def conclude_and_submit(interaction: discord.Interaction, state: BandoSessionState):
+    """Chiude il flusso: avvisa il candidato, invia la candidatura allo staff
+    con i bottoni di approvazione/rifiuto e chiude il canale dopo pochi secondi."""
+    score_txt = f"{state.corrette}/{len(QUIZ_DOMANDE)}"
+
+    # Avvisa il candidato (ephemeral)
+    await interaction.followup.send(
+        f"✅ **Candidatura inviata!**\nPunteggio quiz: **{score_txt}**.\n"
+        "Verrai contattato dallo staff.\n"
+        "Il canale verrà chiuso tra **5–10 secondi**.",
+        ephemeral=True,
+    )
+
+    # Invia allo staff
+    guild = interaction.guild
+    staff_ch = guild.get_channel(CANALE_STAFF_CANDIDATURE_ID) if guild else None
+    if isinstance(staff_ch, discord.TextChannel):
+        embed = build_candidatura_embed(
+            user=interaction.user,
+            nome=state.nome,
+            eta=state.eta,
+            disp=state.disponibilita,
+            esperienze=state.esperienze,
+            motiv=state.motivazione,
+            risposte=state.risposte,
+            corrette=state.corrette,
+            domande=QUIZ_DOMANDE,
+            extra=state.extra,
+        )
+        # QUI passiamo il candidato alla view
+        await staff_ch.send(
+            embed=embed,
+            view=BandoReviewView(candidate_id=interaction.user.id)
+        )
+
+    # Chiudi il canale dopo un breve delay
+    try:
+        await asyncio.sleep(7)  # tra 5 e 10 sec come da tua preferenza
+        if isinstance(interaction.channel, discord.TextChannel):
+            await interaction.channel.delete(reason="Candidatura conclusa")
+    except Exception:
+        pass
+
+    # Pulisci la sessione
+    SESSIONS.pop(state.user_id, None)

@@ -1,0 +1,313 @@
+# views/ferie_view.py
+import re
+from datetime import datetime
+
+import discord
+from discord.ext import commands
+
+from utils.ferie_db import aggiungi_ferie, rimuovi_ferie
+
+# ====== CONFIG: metti l'ID del canale "database-ferie-staff" ======
+FERIE_DB_CHANNEL_ID = 1408599166686593095  # <— SOSTITUISCI con il tuo canale database ferie
+
+# ====== UTILI DATE ======
+def _to_iso(d: str) -> str:
+    """Accetta gg-mm-aaaa o yyyy-mm-dd e ritorna ISO yyyy-mm-dd."""
+    d = (d or "").strip().replace("/", "-")
+    for fmt in ("%d-%m-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(d, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    return d
+
+def _fmt_it(iso: str) -> str:
+    """Da yyyy-mm-dd a dd/mm/yyyy (se possibile)."""
+    try:
+        dt = datetime.strptime(iso, "%Y-%m-%d")
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return iso
+
+def _days_between(iso_start: str, iso_end: str) -> int:
+    try:
+        a = datetime.strptime(iso_start, "%Y-%m-%d").date()
+        b = datetime.strptime(iso_end, "%Y-%m-%d").date()
+        return max((b - a).days + 1, 1)
+    except Exception:
+        return 0
+
+
+# ====== EMBED della RICHIESTA (usato dalla modale) ======
+def build_richiesta_embed(
+    autore: discord.Member,
+    ruolo_principale: discord.Role | None,
+    data_inizio: str,
+    data_fine: str,
+    motivazione: str,
+    disponibilita: str,
+) -> discord.Embed:
+    """
+    Crea l'embed nello stile richiesto:
+    - Titolo in maiuscolo
+    - Corpo con linee 'label: valore'
+    """
+    title = "RICHIEDO LE FERIE"
+    e = discord.Embed(title=title, color=discord.Color.orange())
+    e.set_author(
+        name=autore.top_role.name if autore.top_role else "Staff",
+        icon_url=autore.display_avatar.url if autore.display_avatar else None
+    )
+
+    e.description = (
+        f"👤 **NOME DISCORD COMPLETO:** {autore.mention}\n"
+        f"🧩 **RUOLO NEL SERVER DISCORD:** "
+        f"{(ruolo_principale.mention if ruolo_principale else '—')}\n"
+        f"📅 **DATA DI INIZIO FERIE:** {data_inizio}\n"
+        f"📅 **DATA DI FINE FERIE:** {data_fine}\n"
+        f"❗ **MOTIVAZIONE VALIDA:** {motivazione}\n"
+        f"🕒 **DISPONIBILITÀ DI PRESENZA:** {disponibilita or '—'}\n"
+        f"🖋️ **FIRMA:** {autore.mention}\n"
+    )
+
+    e.set_footer(text="VeneziaRP | Richieste Ferie")
+    return e
+
+
+# ====== PARSER dalla richiesta (embed) ======
+DESC_LINE_RX = re.compile(r"^\s*([^:]+):\s*(.*)$")
+
+def _parse_request_from_embed(emb: discord.Embed) -> dict:
+    """
+    Estrae campi dalla description dell'embed richiesta.
+    Chiavi cercate:
+      - data di inizio
+      - data di fine
+      - motivazione
+      - disponibilità
+      - ruolo nel server
+    """
+    result = {
+        "inizio": "",
+        "fine": "",
+        "motivazione": "",
+        "disponibilita": "",
+        "ruolo_testo": "",
+    }
+    if not emb or not emb.description:
+        return result
+
+    lines = emb.description.splitlines()
+    for raw in lines:
+        line = raw.strip()
+        if not line or ":" not in line:
+            continue
+        clean = line.replace("**", "")
+        m = DESC_LINE_RX.match(clean)
+        if not m:
+            continue
+        key, val = m.group(1).strip(), m.group(2).strip()
+
+        k = key.lower()
+        if "data di inizio" in k:
+            result["inizio"] = val
+        elif "data di fine" in k:
+            result["fine"] = val
+        elif "motivazione" in k:
+            result["motivazione"] = val
+        elif "disponibilità" in k:
+            result["disponibilita"] = val
+        elif "ruolo nel server" in k:
+            result["ruolo_testo"] = val
+
+    return result
+
+
+# ====== COSTRUISCI EMBED per il DATABASE ======
+def _build_db_card_embed(
+    membro: discord.Member,
+    approvatore: discord.Member | discord.User,
+    inizio_iso: str,
+    fine_iso: str,
+    motivazione: str,
+    disponibilita: str,
+    ruolo_testo: str,
+) -> discord.Embed:
+    giorni = _days_between(inizio_iso, fine_iso)
+    e = discord.Embed(
+        title=f"🗃️ Staff in ferie — {membro.display_name}",
+        color=discord.Color.yellow()
+    )
+    e.add_field(
+        name="Periodo",
+        value=f"dal **{_fmt_it(inizio_iso)}** al **{_fmt_it(fine_iso)}**\n🗓️ Durata: **{giorni}** giorni",
+        inline=False
+    )
+    if ruolo_testo:
+        e.add_field(name="Ruolo", value=ruolo_testo, inline=True)
+    e.add_field(name="Approvata da", value=f"{approvatore.mention}", inline=True)
+    if motivazione:
+        e.add_field(name="Motivazione", value=motivazione[:1024], inline=False)
+    if disponibilita:
+        e.add_field(name="Disponibilità", value=disponibilita[:1024], inline=False)
+
+    if membro.display_avatar:
+        e.set_thumbnail(url=membro.display_avatar.url)
+    e.set_footer(text=f"VeneziaRP | Database Ferie Staff • ID utente: {membro.id}")
+    return e
+
+
+# ====== MODALE RIFIUTO ======
+class FerieRejectModal(discord.ui.Modal, title="Rifiuta richiesta — motivazione"):
+    def __init__(self, view_ref: "FerieReviewView"):
+        super().__init__(timeout=None)
+        self.view_ref = view_ref
+        self.reason = discord.ui.TextInput(
+            label="Motivazione (visibile al richiedente)",
+            style=discord.TextStyle.paragraph,
+            max_length=1000,
+            required=True,
+            placeholder="Perché rifiuti la richiesta?"
+        )
+        self.add_item(self.reason)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.view_ref._finalize(
+            interaction=interaction,
+            approved=False,
+            reason=self.reason.value.strip()
+        )
+
+
+# ====== VIEW STAFF (APPROVA/RIFIUTA) ======
+class FerieReviewView(discord.ui.View):
+    """
+    Bottoni per approvare/rifiutare. Persistenti grazie ai custom_id.
+    """
+    def __init__(self, bot: commands.Bot | discord.Client, applicant_id: int | None, approver_roles: set[int]):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.applicant_id = applicant_id
+        self.approver_roles = approver_roles
+
+    def _can_approve(self, user: discord.Member) -> bool:
+        return any(r.id in self.approver_roles for r in getattr(user, "roles", [])) or user.guild_permissions.administrator
+
+    @discord.ui.button(label="Approva", style=discord.ButtonStyle.success, emoji="✅",
+                       custom_id="ferie_approve")
+    async def approve(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not self._can_approve(interaction.user):
+            return await interaction.response.send_message("❌ Non puoi approvare questa richiesta.", ephemeral=True)
+        await self._finalize(interaction, approved=True, reason=None)
+
+    @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.danger, emoji="❌",
+                       custom_id="ferie_reject")
+    async def reject(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not self._can_approve(interaction.user):
+            return await interaction.response.send_message("❌ Non puoi rifiutare questa richiesta.", ephemeral=True)
+        await interaction.response.send_modal(FerieRejectModal(self))
+
+    async def _finalize(self, interaction: discord.Interaction, approved: bool, reason: str | None):
+        guild = interaction.guild
+        member = guild.get_member(self.applicant_id) if guild and self.applicant_id else None
+
+        # disabilita bottoni
+        for c in self.children:
+            if isinstance(c, discord.ui.Button):
+                c.disabled = True
+
+        # aggiorna embed richiesta
+        try:
+            msg = interaction.message
+            emb = msg.embeds[0] if msg and msg.embeds else None
+            if emb:
+                if approved:
+                    emb.add_field(name="ESITO", value="✅ **APPROVATA**", inline=True)
+                    emb.color = discord.Color.green()
+                else:
+                    emb.add_field(name="ESITO", value="❌ **RIFIUTATA**", inline=True)
+                    if reason:
+                        emb.add_field(name="Motivazione rifiuto", value=reason[:1024], inline=False)
+                    emb.color = discord.Color.red()
+
+                when = datetime.now().strftime("%d/%m/%Y %H:%M")
+                emb.set_footer(
+                    text=f"VeneziaRP | Richieste Ferie • Esito da: {interaction.user.display_name} • {when}"
+                )
+
+                await msg.edit(embed=emb, view=self)
+        except Exception:
+            pass
+
+        # === se APPROVATA: registra in DB e pubblica nel canale "database" ===
+        if approved and member and guild:
+            try:
+                original = interaction.message.embeds[0] if interaction.message and interaction.message.embeds else None
+                parsed = _parse_request_from_embed(original) if original else {}
+
+                inizio_iso = _to_iso(parsed.get("inizio", ""))
+                fine_iso   = _to_iso(parsed.get("fine", ""))
+                motiv      = parsed.get("motivazione", "")
+                disp       = parsed.get("disponibilita", "")
+                ruolo_txt  = parsed.get("ruolo_testo", "")
+
+                # controllo date invertite
+                if inizio_iso and fine_iso and inizio_iso > fine_iso:
+                    await interaction.followup.send(
+                        "⚠️ Le date risultano invertite (inizio dopo fine). Niente salvataggio.",
+                        ephemeral=True
+                    )
+                    return
+
+                # salva nel file JSON
+                aggiungi_ferie(
+                    user_id=member.id,
+                    username=member.display_name,
+                    ruolo=ruolo_txt,
+                    data_inizio=inizio_iso,
+                    data_fine=fine_iso,
+                    motivazione=motiv,
+                    approvato_da=interaction.user.display_name
+                )
+
+                # manda la "scheda" nel canale database
+                db_ch = guild.get_channel(FERIE_DB_CHANNEL_ID)
+                if not isinstance(db_ch, discord.TextChannel):
+                    await interaction.followup.send(
+                        "⚠️ Canale database ferie non trovato o permessi mancanti. Ho salvato solo nel JSON.",
+                        ephemeral=True
+                    )
+                else:
+                    card = _build_db_card_embed(
+                        membro=member,
+                        approvatore=interaction.user,
+                        inizio_iso=inizio_iso,
+                        fine_iso=fine_iso,
+                        motivazione=motiv,
+                        disponibilita=disp,
+                        ruolo_testo=ruolo_txt,
+                    )
+                    await db_ch.send(embed=card)
+            except Exception:
+                pass
+
+        # DM al richiedente
+        if member:
+            try:
+                if approved:
+                    dm = ("✅ **Richiesta ferie APPROVATA**\n"
+                          f"Staff: {interaction.user.display_name}\n"
+                          "Buone ferie!")
+                else:
+                    dm = ("❌ **Richiesta ferie RIFIUTATA**\n"
+                          f"Staff: {interaction.user.display_name}\n"
+                          f"Motivazione: {reason or 'Non specificata'}")
+                await member.send(dm)
+            except discord.Forbidden:
+                pass
+
+        # ack staff
+        try:
+            await interaction.response.send_message("Operazione registrata.", ephemeral=True)
+        except discord.InteractionResponded:
+            await interaction.followup.send("Operazione registrata.", ephemeral=True)

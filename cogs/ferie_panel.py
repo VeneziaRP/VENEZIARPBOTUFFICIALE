@@ -1,0 +1,120 @@
+# cogs/ferie_panel.py
+import discord
+from discord.ext import commands
+from discord import app_commands
+from datetime import datetime
+
+# ====== CONFIG ======
+FERIE_PANEL_COLOR = 0x4B7BEC  # blu elegante
+PANEL_TITLE = "📅 Richieste Ferie — VeneziaRP"
+
+# Ruoli che possono approvare (mostrati nell’embed)
+APPROVER_ROLE_IDS = {
+    1408613537181466817,  # 👑 fondatore
+    1408613538594947303,  # 👑 co-fondatore
+}
+
+# Se hai già la modale: ferma l'import a file esistenti
+try:
+    from views.ferie_request_view import FerieRequestModal
+    HAS_MODAL = True
+except Exception:
+    FerieRequestModal = None
+    HAS_MODAL = False
+
+
+def _approver_mentions(guild: discord.Guild | None) -> str:
+    if not guild:
+        return "• Community Manager / Responsabile Staff / Supervisore"
+    roles = []
+    for rid in APPROVER_ROLE_IDS:
+        r = guild.get_role(rid)
+        if r:
+            roles.append(f"{r.mention}")
+    return " • ".join(roles) if roles else "• Community Manager / Responsabile Staff / Supervisore"
+
+
+class FeriePanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Richiedi Ferie",
+        emoji="📝",
+        style=discord.ButtonStyle.primary,
+        custom_id="ferie:open_form",
+    )
+    async def open_form(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if HAS_MODAL and FerieRequestModal:
+            return await interaction.response.send_modal(FerieRequestModal(interaction.user))
+        # fallback se la modale non è ancora collegata
+        await interaction.response.send_message(
+            "🛠️ Il modulo ferie verrà collegato qui. (Collega `FerieRequestModal` per aprirlo dal bottone.)",
+            ephemeral=True
+        )
+
+
+class FeriePanel(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(
+        name="ferie_panel",
+        description="Pubblica il pannello ufficiale per le richieste ferie (embed + bottone)."
+    )
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def ferie_panel(self, interaction: discord.Interaction):
+        g = interaction.guild
+
+        descr = (
+            "Benvenuto nel **pannello ufficiale** per le richieste ferie dello **Staff** di VeneziaRP.\n"
+            "Le sezioni si aggiornano automaticamente al momento dell’invio e della revisione.\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "### 🔹 Come funziona\n"
+            "1) Clicca **Richiedi Ferie** e compila il modulo.\n"
+            "2) La richiesta arriva allo **staff responsabile** per la revisione.\n"
+            "3) Ricevi l’**esito** (✅ approvata / ❌ rifiutata) in DM e nel canale dedicato.\n\n"
+            "### 🔹 Requisiti\n"
+            "• Essere **membro dello Staff attivo**\n"
+            "• Indicare **date precise** (inizio/fine) e **motivazione valida**\n"
+            "• Specificare se sei **parzialmente disponibile** in quei giorni\n\n"
+            "### 🔹 Linee guida\n"
+            "• Durata consigliata: **max 14 giorni consecutivi**\n"
+            "• Le ferie **non** sospendono responsabilità o attività **in corso**\n"
+            "• In caso di urgenza, contatta un **responsabile**\n\n"
+            "### 🔹 Chi approva\n"
+            f"{_approver_mentions(g)}\n\n"
+            "### 🔹 Esempio\n"
+            "**Inizio:** 15-08-2025  •  **Fine:** 25-08-2025\n"
+            "**Motivazione:** Vacanza familiare\n"
+            "**Disponibilità:** 21–23\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "### 💡 Suggerimenti rapidi\n"
+            "• Usa il formato **gg-mm-aaaa**\n"
+            "• Descrivi **brevemente** la motivazione\n"
+            "• Indica se sarai **reperibile** (es. solo la sera)\n"
+            "• Se cambi piano, **avvisa lo staff**"
+        )
+
+        emb = discord.Embed(
+            title=PANEL_TITLE,
+            description=descr,
+            color=discord.Color(FERIE_PANEL_COLOR)
+        )
+        if g and g.icon:
+            emb.set_thumbnail(url=g.icon.url)
+        emb.timestamp = datetime.utcnow()  # timestamp in alto a destra
+
+        # 👇 qui mettiamo il logo del server piccolo sotto
+        if g and g.icon:
+            emb.set_footer(text="VeneziaRP | Richieste Ferie", icon_url=g.icon.url)
+        else:
+            emb.set_footer(text="VeneziaRP | Richieste Ferie")
+
+        view = FeriePanelView()
+        await interaction.response.send_message(embed=emb, view=view)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(FeriePanel(bot))
+    bot.add_view(FeriePanelView())  # view persistente

@@ -1,0 +1,9 @@
+import discord
+
+class TicketModale(discord.ui.Modal, title="Apri Ticket"):
+    def __init__(self):
+        super().__init__()
+        self.add_item(discord.ui.TextInput(label="Descrivi il problema", style=discord.TextStyle.paragraph))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.send_message("✅ Ticket ricevuto!", ephemeral=True)

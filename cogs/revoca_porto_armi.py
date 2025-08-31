@@ -1,0 +1,90 @@
+# cogs/revoca_porto_armi.py
+import discord
+from discord import app_commands
+from discord.ext import commands
+from utils.checks import staff_only  # ⬅️ aggiungi
+from views.porto_armi_db import revoke_approved
+
+LOG_REVOCA_PORTO_ID = 1408591645464592394  # <-- METTI l’ID del canale logs revoche porto d’armi
+
+class RevocaPortoArmi(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(
+        name="revoca_porto_armi",
+        description="Revoca il porto d’armi a un utente (consente di ripresentare la richiesta)."
+    )
+    @staff_only()  # ⬅️ solo staff
+    @app_commands.checks.has_permissions(manage_roles=True)
+    @app_commands.describe(
+        utente="Utente a cui revocare il porto d’armi",
+        tipo="(Opz.) Tipologia (P1, P2, P3, P4) o 'tutte'",
+        motivazione="(Opz.) Motivo della revoca (visibile nel log e DM)"
+    )
+    @app_commands.choices(
+        tipo=[
+            app_commands.Choice(name="Tutte le tipologie", value="tutte"),
+            app_commands.Choice(name="P1 — Sportivo", value="P1"),
+            app_commands.Choice(name="P2 — Caccia", value="P2"),
+            app_commands.Choice(name="P3 — Difesa Personale", value="P3"),
+            app_commands.Choice(name="P4 — Lavoro", value="P4"),
+        ]
+    )
+    async def revoca_porto_armi(
+        self,
+        interaction: discord.Interaction,
+        utente: discord.Member,
+        tipo: app_commands.Choice[str] | None = None,
+        motivazione: str | None = None
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        # 1) DB → rimuove lo stato approved
+        changed = revoke_approved(utente.id)
+
+        # 2) Embed log
+        emb = discord.Embed(
+            title="🔻 Revoca Porto d’Armi",
+            color=discord.Color.red(),
+            description="Un porto d’armi è stato revocato; l’utente potrà ripresentare domanda."
+        )
+        emb.add_field(name="👤 Utente", value=f"{utente.mention}\n`ID: {utente.id}`", inline=False)
+        if tipo:
+            emb.add_field(name="🎯 Tipologia", value=f"**{tipo.value}**", inline=True)
+        emb.add_field(name="🛡️ Staff", value=interaction.user.mention, inline=True)
+        if motivazione:
+            emb.add_field(name="📝 Motivazione", value=f"```{motivazione[:1000]}```", inline=False)
+
+        if interaction.guild and interaction.guild.icon:
+            emb.set_footer(text=interaction.guild.name, icon_url=interaction.guild.icon.url)
+
+        # 3) Log canale
+        ch = interaction.client.get_channel(LOG_REVOCA_PORTO_ID)
+        if isinstance(ch, discord.TextChannel):
+            try:
+                await ch.send(embed=emb)
+            except discord.Forbidden:
+                pass
+
+        # 4) DM all’utente
+        try:
+            tipologia_txt = f"🎯 Tipologia: **{tipo.value}**\n" if tipo else ""
+            motivazione_txt = f"📝 Motivazione: {motivazione}\n" if motivazione else ""
+            dm_txt = (
+                "🔻 **Il tuo Porto d’Armi è stato revocato.**\n"
+                f"{tipologia_txt}{motivazione_txt}"
+                "Potrai **ripresentare la richiesta** quando sarai in regola con i requisiti."
+            )
+            await utente.send(dm_txt)
+        except discord.Forbidden:
+            pass
+
+        # 5) Risposta allo staff
+        if changed:
+            await interaction.followup.send("✅ Revoca registrata. L’utente potrà rifare la richiesta.", ephemeral=True)
+        else:
+            await interaction.followup.send("ℹ️ Non risultava un porto d’armi approvato in archivio; comunque potrà rifare richiesta.", ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(RevocaPortoArmi(bot))

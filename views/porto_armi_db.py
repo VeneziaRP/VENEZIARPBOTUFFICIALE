@@ -1,0 +1,83 @@
+# views/porto_armi_db.py
+import os, json, datetime
+from typing import Any, Dict, Optional
+
+DB_PATH = "data/porto_armi.json"
+
+def _ensure():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    if not os.path.exists(DB_PATH):
+        with open(DB_PATH, "w", encoding="utf-8") as f:
+            json.dump({"approved": [], "pending": []}, f, ensure_ascii=False, indent=2)
+
+def _load() -> Dict[str, Any]:
+    _ensure()
+    with open(DB_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data.setdefault("approved", [])
+    data.setdefault("pending", [])
+    return data
+
+def _save(data: Dict[str, Any]):
+    with open(DB_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def is_pending(user_id: int) -> bool:
+    db = _load()
+    return any(p.get("user_id") == user_id for p in db["pending"])
+
+def is_already_approved(user_id: int) -> bool:
+    db = _load()
+    return any(a.get("user_id") == user_id for a in db["approved"])
+
+def mark_pending(user_id: int, dati: Optional[Dict[str, Any]] = None):
+    """
+    Salva l'utente in PENDING con i dati della richiesta:
+    es. {"tipo":"P3","motivazione":"...","arma_principale":"...","esperienza":"..."}
+    """
+    db = _load()
+    if not is_pending(user_id) and not is_already_approved(user_id):
+        db["pending"].append({
+            "user_id": user_id,
+            "dati": (dati or {}),
+            "when": datetime.datetime.utcnow().isoformat() + "Z"
+        })
+        _save(db)
+
+def get_pending_data(user_id: int) -> Dict[str, Any]:
+    """Ritorna il dict 'dati' salvato in pending (o {})."""
+    db = _load()
+    entry = next((p for p in db["pending"] if p.get("user_id") == user_id), None)
+    if not entry:
+        return {}
+    return entry.get("dati", {}) if isinstance(entry.get("dati"), dict) else {}
+
+def unmark_pending(user_id: int):
+    db = _load()
+    before = len(db["pending"])
+    db["pending"] = [p for p in db["pending"] if p.get("user_id") != user_id]
+    if len(db["pending"]) != before:
+        _save(db)
+
+def mark_approved(user_id: int, tipo: Optional[str] = None):
+    """Sposta l'utente in APPROVED registrando anche la tipologia."""
+    db = _load()
+    if not is_already_approved(user_id):
+        db["approved"].append({
+            "user_id": user_id,
+            "tipo": (tipo or ""),
+            "when": datetime.datetime.utcnow().isoformat() + "Z"
+        })
+        db["pending"] = [p for p in db["pending"] if p.get("user_id") != user_id]
+        _save(db)
+
+def revoke_approved(user_id: int) -> bool:
+    """Rimuove l’utente da 'approved' (ritorna True se ha cambiato qualcosa)."""
+    db = _load()
+    before = len(db["approved"])
+    db["approved"] = [a for a in db["approved"] if a.get("user_id") != user_id]
+    db["pending"] = [p for p in db["pending"] if p.get("user_id") != user_id]
+    changed = len(db["approved"]) != before
+    if changed:
+        _save(db)
+    return changed
